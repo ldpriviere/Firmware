@@ -56,9 +56,14 @@
 #include <stdbool.h>
 #include <arch/board/board.h>
 #include <systemlib/systemlib.h>
+#include <visibility.h>
+#include <drivers/drv_hrt.h>
 #include "../../NuttX/nuttx/include/fcntl.h"
 #include "../../NuttX/nuttx/include/sys/types.h"
-#include <visibility.h>
+
+#include <uORB/uORB.h>
+#include <uORB/topics/battery_status.h>
+
 #include "mpptLink.h"
 
 #include <math.h>
@@ -83,11 +88,12 @@ int mppt_app_thread_main(int argc, char *argv[])
 	uint8_t buf[10];
 	MpptFrame frame;
 	
-	/* assuming NuttShell is on UART1 (/dev/ttyS0) */
-	int uart_fd = open("/dev/ttyS1", O_RDWR | O_NONBLOCK | O_NOCTTY);
+	/* ======================  UART4 Configuration ======================== */
+
+	int uart_fd = open("/dev/ttyS3", O_RDWR | O_NONBLOCK | O_NOCTTY);
 	
 	if (uart_fd < 0) {
-		printf("ERROR opening UART2, aborting..\n");
+		printf("ERROR opening UART4, aborting..\n");
 		return uart_fd;
 	}
 	
@@ -110,14 +116,25 @@ int mppt_app_thread_main(int argc, char *argv[])
 		exit(termios_state);
 	}
 	
+	/* ==================== uORB messages initialization ======================*/
+
+	struct battery_status_s _battery_status;
+	orb_advert_t _battery_pub = orb_advertise(ORB_ID(battery_status), &_battery_status);
+
+	/* ==================== POLL initialization ======================*/
 	struct pollfd fds[1];
 	fds[0].fd = uart_fd;
 	fds[0].events = POLLIN;
 
 	ssize_t nread = 0;
 	
+	/* ==================== MPPT frame messages initialization ======================*/
+
 	initMpptFrame(&frame);
 	
+
+	/* ==================== MAIN loop ======================*/
+
 	while (!thread_should_exit) {
 	
 		if (poll(fds, 1, timeout) > 0) {
@@ -133,11 +150,22 @@ int mppt_app_thread_main(int argc, char *argv[])
 				if(parseMpptFrame(&buf[i], &frame))
 				{
 					
+					hrt_abstime timestamp = hrt_absolute_time();
+
 					/* A complete message is available */
 					
 					printf("Message complete \n");
 					printf("voltage : %f\n", (double)frame.batteryVoltage);
 					printf("current : %f\n", (double)frame.solarCurrent);
+
+					_battery_status.timestamp = timestamp;
+					_battery_status.voltage_v = frame.batteryVoltage;
+					_battery_status.voltage_filtered_v = frame.batteryVoltage;
+					_battery_status.current_a = frame.solarCurrent;
+					_battery_status.discharged_mah = -1;
+
+					/* Publish message */
+					orb_publish(ORB_ID(battery_status), _battery_pub, &_battery_status);
 				}
 			}
 		
