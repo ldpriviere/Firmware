@@ -60,7 +60,7 @@ static unsigned counter = 0;
 #define LED_PATTERN_FMU_REFUSE_TO_ARM 		0x5555		/**< fast blinking			*/
 #define LED_PATTERN_IO_ARMED 			0x5050		/**< long off, then double blink 	*/
 #define LED_PATTERN_FMU_ARMED 			0x5500		/**< long off, then quad blink 		*/
-#define LED_PATTERN_IO_FMU_ARMED 		0xffff		/**< constantly on			*/
+#define LED_PATTERN_IO_FMU_ARMED 		0x0000		/**< constantly off			*/
 
 static unsigned blink_counter = 0;
 

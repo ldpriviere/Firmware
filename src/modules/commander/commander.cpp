@@ -155,7 +155,6 @@ static volatile bool thread_should_exit = false;		/**< daemon exit flag */
 static volatile bool thread_running = false;		/**< daemon status flag */
 static int daemon_task;				/**< Handle of daemon task / thread */
 
-static unsigned int leds_counter;
 /* To remember when last notification was sent */
 static uint64_t last_print_mode_reject_time = 0;
 /* if connected via USB */
@@ -1664,78 +1663,13 @@ check_valid(hrt_abstime timestamp, hrt_abstime timeout, bool valid_in, bool *val
 void
 control_status_leds(vehicle_status_s *status_local, const actuator_armed_s *actuator_armed, bool changed)
 {
-	/* driving rgbled */
-	if (changed) {
-		bool set_normal_color = false;
 
-		/* set mode */
-		if (status_local->arming_state == ARMING_STATE_ARMED) {
-			rgbled_set_mode(RGBLED_MODE_ON);
-			set_normal_color = true;
-
-		} else if (status_local->arming_state == ARMING_STATE_ARMED_ERROR) {
-			rgbled_set_mode(RGBLED_MODE_BLINK_FAST);
-			rgbled_set_color(RGBLED_COLOR_RED);
-
-		} else if (status_local->arming_state == ARMING_STATE_STANDBY) {
-			rgbled_set_mode(RGBLED_MODE_BREATHE);
-			set_normal_color = true;
-
-		} else {	// STANDBY_ERROR and other states
-			rgbled_set_mode(RGBLED_MODE_BLINK_NORMAL);
-			rgbled_set_color(RGBLED_COLOR_RED);
-		}
-
-		if (set_normal_color) {
-			/* set color */
-			if (status_local->battery_warning == VEHICLE_BATTERY_WARNING_LOW || status_local->failsafe) {
-				rgbled_set_color(RGBLED_COLOR_AMBER);
-				/* VEHICLE_BATTERY_WARNING_CRITICAL handled as ARMING_STATE_ARMED_ERROR / ARMING_STATE_STANDBY_ERROR */
-
-			} else {
-				if (status_local->condition_local_position_valid) {
-					rgbled_set_color(RGBLED_COLOR_GREEN);
-
-				} else {
-					rgbled_set_color(RGBLED_COLOR_BLUE);
-				}
-			}
-		}
-	}
-
-#ifdef CONFIG_ARCH_BOARD_PX4FMU_V1
-
-	/* this runs at around 20Hz, full cycle is 16 ticks = 10/16Hz */
-	if (actuator_armed->armed) {
-		/* armed, solid */
-		led_on(LED_BLUE);
-
-	} else if (actuator_armed->ready_to_arm) {
-		/* ready to arm, blink at 1Hz */
-		if (leds_counter % 20 == 0) {
-			led_toggle(LED_BLUE);
-		}
-
-	} else {
-		/* not ready to arm, blink at 10Hz */
-		if (leds_counter % 2 == 0) {
-			led_toggle(LED_BLUE);
-		}
-	}
-
-#endif
-
-	/* give system warnings on error LED, XXX maybe add memory usage warning too */
-	if (status_local->load > 0.95f) {
-		if (leds_counter % 2 == 0) {
-			led_toggle(LED_AMBER);
-		}
-
-	} else {
-		led_off(LED_AMBER);
-	}
-
-	leds_counter++;
+	rgbled_set_mode(RGBLED_MODE_OFF);
+	rgbled_set_color(RGBLED_COLOR_OFF);
+	led_off(LED_AMBER);
+	led_off(LED_RED);
+	led_off(LED_BLUE);
+	led_off(LED_SAFETY);
 }
 
 transition_result_t
