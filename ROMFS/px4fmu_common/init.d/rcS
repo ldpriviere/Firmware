@@ -566,6 +566,11 @@ then
 	# Start the navigator
 	#
 	navigator start
+	
+	#
+	# Start MPPT application
+	#
+	mppt start
 
 	#
 	# Generic setup (autostart ID not found)

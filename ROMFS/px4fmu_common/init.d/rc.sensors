@@ -74,7 +74,7 @@ fi
 # ALWAYS start this task before the
 # preflight_check.
 #
-if sensors start
+if sb_sensors start
 then
 	preflight_check &
 fi
