@@ -68,6 +68,7 @@
 #include <uORB/topics/debug_key_value.h>
 #include <uORB/topics/airspeed.h>
 #include <uORB/topics/battery_status.h>
+#include <uORB/topics/mppt_status.h>
 #include <uORB/topics/navigation_capabilities.h>
 #include <drivers/drv_rc_input.h>
 #include <drivers/drv_pwm_output.h>
@@ -77,6 +78,7 @@
 
 #include "mavlink_messages.h"
 #include "mavlink_main.h"
+#include "mppt.h"
 
 static uint16_t cm_uint16_from_m_float(float m);
 static void get_mavlink_mode_state(struct vehicle_status_s *status, struct position_setpoint_triplet_s *pos_sp_triplet,
@@ -494,6 +496,64 @@ protected:
 	}
 };
 
+class MavlinkMpptStatus : public MavlinkStream
+{
+public:
+	const char *get_name() const
+	{
+		return MavlinkMpptStatus::get_name_static();
+	}
+
+	static const char *get_name_static()
+	{
+		return "MPPT_STATUS";
+	}
+
+	uint8_t get_id()
+	{
+		return MAVLINK_MSG_ID_MPPT_STATUS;
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkMpptStatus(mavlink);
+	}
+
+	unsigned get_size()
+	{
+		return MAVLINK_MSG_ID_MPPT_STATUS_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES;
+	}
+
+private:
+	MavlinkOrbSubscription *_mppt_sub;
+
+	/* do not allow top copying this class */
+	MavlinkMpptStatus(MavlinkMpptStatus &);
+	MavlinkMpptStatus& operator = (const MavlinkMpptStatus &);
+
+protected:
+	explicit MavlinkMpptStatus(Mavlink *mavlink) : MavlinkStream(mavlink),
+		_mppt_sub(_mavlink->add_orb_subscription(ORB_ID(mppt_status)))
+	{}
+
+	void send(const hrt_abstime t)
+	{
+		struct mppt_status_s status;
+
+		if (_mppt_sub->update(&status)) {
+			mavlink_mppt_status_t msg;
+
+			msg.batteryVoltage = status.batteryVoltage;
+			msg.dutyCycleMax = status.dutyCycleMax;
+			msg.dutyCycleMin = status.dutyCycleMin;
+			msg.mpptTemperature = status.mpptTemperature;
+			msg.solarCurrent = status.solarCurrent;
+			msg.totalCurrent = status.totalCurrent;
+
+			_mavlink->send_message(MAVLINK_MSG_ID_MPPT_STATUS, &msg);
+		}
+	}
+};
 
 class MavlinkStreamHighresIMU : public MavlinkStream
 {
@@ -2135,6 +2195,7 @@ StreamListItem *streams_list[] = {
 	new StreamListItem(&MavlinkStreamStatustext::new_instance, &MavlinkStreamStatustext::get_name_static),
 	new StreamListItem(&MavlinkStreamCommandLong::new_instance, &MavlinkStreamCommandLong::get_name_static),
 	new StreamListItem(&MavlinkStreamSysStatus::new_instance, &MavlinkStreamSysStatus::get_name_static),
+	new StreamListItem(&MavlinkMpptStatus::new_instance, &MavlinkMpptStatus::get_name_static),
 	new StreamListItem(&MavlinkStreamHighresIMU::new_instance, &MavlinkStreamHighresIMU::get_name_static),
 	new StreamListItem(&MavlinkStreamAttitude::new_instance, &MavlinkStreamAttitude::get_name_static),
 	new StreamListItem(&MavlinkStreamAttitudeQuaternion::new_instance, &MavlinkStreamAttitudeQuaternion::get_name_static),

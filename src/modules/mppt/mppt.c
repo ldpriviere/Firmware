@@ -65,6 +65,7 @@
 
 #include <uORB/uORB.h>
 #include <uORB/topics/battery_status.h>
+#include <uORB/topics/mppt_status.h>
 
 #include "mpptLink.h"
 
@@ -93,6 +94,9 @@ static int mavlink_fd = 0;
 /*  uORB declarations */
 struct battery_status_s _battery_status;
 orb_advert_t _battery_pub;
+
+struct mppt_status_s _mppt_status;
+orb_advert_t _mppt_pub;
 
 void handleFloatEndianness(float *value)
 {
@@ -123,6 +127,7 @@ void statusFrameReceived(MpptStatusFrame *statusFrame)
 	/*Handle PIC Endianness*/
 	handleEndianness(statusFrame);
 
+	/* Battery status ORB message */
 	_battery_status.timestamp = timestamp;
 	_battery_status.voltage_v = statusFrame->batteryVoltage;
 	_battery_status.voltage_filtered_v = statusFrame->batteryVoltage;
@@ -131,6 +136,19 @@ void statusFrameReceived(MpptStatusFrame *statusFrame)
 
 	/* Publish message */
 	orb_publish(ORB_ID(battery_status), _battery_pub, &_battery_status);
+
+	/* MPPT status ORB message */
+	_mppt_status.batteryVoltage = statusFrame->batteryVoltage;
+	_mppt_status.dutyCycleMax = statusFrame->dutyCycleMax;
+	_mppt_status.dutyCycleMin = statusFrame->dutyCycleMin;
+	_mppt_status.mpptTemperature = statusFrame->mpptTemperature;
+	_mppt_status.solarCurrent = statusFrame->solarCurrent;
+	_mppt_status.timestamp = timestamp;
+	_mppt_status.totalCurrent = statusFrame->totalCurrent;
+
+	/* Publish message */
+	orb_publish(ORB_ID(mppt_status), _mppt_pub, &_mppt_status);
+
 }
 
 void eventFrameReceived(MpptEventFrame *eventFrame)
@@ -185,6 +203,7 @@ int mppt_app_thread_main(int argc, char *argv[])
 	/* ==================== uORB messages initialization ======================*/
 
 	_battery_pub = orb_advertise(ORB_ID(battery_status), &_battery_status);
+	_mppt_pub = orb_advertise(ORB_ID(mppt_status), &_mppt_status);
 
 	/* ==================== POLL initialization ======================*/
 	struct pollfd fds[1];
