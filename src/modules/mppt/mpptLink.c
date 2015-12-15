@@ -1,125 +1,376 @@
 #include "mpptLink.h"
-#include <string.h>
 
-
-void initMpptFrame(MpptFrame *frame)
+int createMpptStatusFrame(MpptStatusFrame *statusFrame, unsigned char *buffer)
 {
-	frame->frameState = NO_SYNCH;
-	frame->batteryVoltage = -1.0;
-	frame->solarCurrent = -1.0;
-	frame->frameIndex = 0;
-	frame->length = 0;
+	int i= 0;
+
+	/* Setup frame start */
+	buffer[i] = MPPT_LINK_START_CHAR;
+	i++;
+
+	/* It's a status frame */
+	buffer[i] = STATUS_FRAME;
+	i++;
+
+	/* Copy temperature */
+	memcpy(&buffer[i], &(statusFrame->mpptTemperature), sizeof(statusFrame->mpptTemperature));
+	i+=sizeof(statusFrame->mpptTemperature);
+
+	/* Copy solar current*/
+	memcpy(&buffer[i], &(statusFrame->solarCurrent), sizeof(statusFrame->solarCurrent));
+	i+=sizeof(statusFrame->solarCurrent);
+
+	/* Copy total current*/
+	memcpy(&buffer[i], &(statusFrame->totalCurrent), sizeof(statusFrame->totalCurrent));
+	i+=sizeof(statusFrame->totalCurrent);
+
+	/* Copy battery voltage*/
+	memcpy(&buffer[i], &(statusFrame->batteryVoltage), sizeof(statusFrame->batteryVoltage));
+	i+=sizeof(statusFrame->batteryVoltage);
+
+	/* Copy duty cycle min*/
+	memcpy(&buffer[i], &(statusFrame->dutyCycleMin), sizeof(statusFrame->dutyCycleMin));
+	i+=sizeof(statusFrame->dutyCycleMin);
+
+	/* Copy duty cycle max*/
+	memcpy(&buffer[i], &(statusFrame->dutyCycleMax), sizeof(statusFrame->dutyCycleMax));
+	i+=sizeof(statusFrame->dutyCycleMax);
+
+	/* End of frame */
+	buffer[i] = MPPT_LINK_STOP_CHAR;
+	i++;
+
+	return i;
 }
 
-int parseMpptFrame(unsigned char *buf, MpptFrame *frame)
+int createMpptEventFrame(MpptEventFrame *eventFrame, unsigned char *buffer)
 {
-	switch(*buf)
+	int i=0;
+
+	/* Setup frame start */
+	buffer[i] = MPPT_LINK_START_CHAR;
+	i++;
+
+	/* It's a status frame */
+	buffer[i] = EVENT_FRAME;
+	i++;
+
+	/* Copy event type */
+	memcpy(&buffer[i], &(eventFrame->eventType), sizeof(eventFrame->eventType));
+	i+=sizeof(eventFrame->eventType);
+
+	/* Copy event param 1 */
+	memcpy(&buffer[i], &(eventFrame->param1), sizeof(eventFrame->param1));
+	i+=sizeof(eventFrame->param1);
+
+	/* Copye event param 2 */
+	memcpy(&buffer[i], &(eventFrame->param2), sizeof(eventFrame->param2));
+	i+=sizeof(eventFrame->param2);
+
+	/* End of frame */
+	buffer[i] = MPPT_LINK_STOP_CHAR;
+	i++;
+
+	return i;
+}
+
+void initMpptStateMachine(MpptParsingStateMachine* stateMachine)
+{
+	stateMachine->status = NO_FRAME;
+	stateMachine->bufferIndex = 0;
+
+	for(int i=0; i<MPPT_MAX_FRAME_SIZE; i++)
 	{
-		case MPPT_LINK_START_CHAR : 
+		stateMachine->buffer[i] = 0;
+	}
+}
+
+void processRxBuffer(MpptParsingStateMachine *stateMachine, unsigned char *rxBuffer, int size)
+{
+	for(int i = 0; i<size; i++)
+	{
+		if(parseMpptFrame(stateMachine, rxBuffer[i]))
 		{
-			initMpptFrame(frame);
-			frame->frameState = SYNCH;
 			
-			return 0;
-		}
-		case MPPT_LINK_STOP_CHAR : 
-		{
-			/* Frame is not valid */
-			if(frame->frameState != END)
+			MpptFrameType frameType = getFrameType(stateMachine->buffer, stateMachine->bufferIndex);
+			MpptParseResult result;
+
+			if(frameType == STATUS_FRAME)
 			{
-				initMpptFrame(frame);
-				return 0;
+				result = buildStatusFrame(&(stateMachine->statusFrameRx), stateMachine->buffer, stateMachine->bufferIndex);
+				if(result != BUFFER_EMPTY &&  result != MPPT_ERROR){
+
+					if(result == MPPT_OK)
+					{
+						stateMachine->statusFrameFound(&(stateMachine->statusFrameRx));
+					}
+				}
 			}
-			
-			/* Frame is valid */
-			if(frame->length == MPPT_FRAME_LENGTH)
+			else if(frameType == EVENT_FRAME)
 			{
-				frame->frameState = COMPLETE;
-				return 1;
+				result = buildEventFrame(&(stateMachine->eventFrameRx), stateMachine->buffer, stateMachine->bufferIndex);
+				if(result != BUFFER_EMPTY &&  result != MPPT_ERROR){
+
+					if(result == MPPT_OK)
+					{
+						stateMachine->eventFrameFound(&(stateMachine->eventFrameRx));
+					}
+				}
 			}
-			else /* Frame is not valid */
+			else
 			{
-				initMpptFrame(frame);
-				return 0;
+				initMpptStateMachine(stateMachine);
 			}
-		}
-		default :
-		{
-			buildMpptFrame(buf, frame);
-			return 0;
 		}
 	}
 }
 
-void buildMpptFrame(unsigned char *buf, MpptFrame *frame)
+int parseMpptFrame(MpptParsingStateMachine* stateMachine, unsigned char rxBuffer)
 {
-	switch(frame->frameState)
+	int frameFound = 0;
+
+	if(stateMachine->status == STOP_FOUND)
 	{
-		
-		case SYNCH :
-		{
-		
-			frame->frameState = VOLTAGE;
-				
-			unsigned char *pVolt = (unsigned char *)(&frame->batteryVoltage) + frame->frameIndex;
-			*pVolt = *buf;
-				
-			frame->frameIndex++;
-			frame->length++;
-			
-			break;
-		}
-		
-		case VOLTAGE :
-		{
-			unsigned char *pVolt = (unsigned char *)(&frame->batteryVoltage)  + frame->frameIndex;
-			*pVolt = *buf;
-			
-			frame->length++;
-			
-			if(frame->frameIndex == sizeof(float) - 1)
-			{
-				frame->frameIndex = 0;
-				frame->frameState = CURRENT;
-			}
-			else
-			{
-				frame->frameIndex++;
-			}		
-			break;
-		}
-		
-		case CURRENT :
-		{
-			unsigned char *pVolt = (unsigned char *)(&frame->solarCurrent) + frame->frameIndex;
-			*pVolt = *buf;
-			
-			frame->length++;
-			
-			if(frame->frameIndex == sizeof(float) - 1)
-			{
-				frame->frameIndex = 0;
-				frame->frameState = END;
-			}
-			else
-			{
-				frame->frameIndex++;
-			}			
-			break;
-		}
-		
-		default : break;
+		initMpptStateMachine(stateMachine);
 	}
+
+	switch(stateMachine->status)
+	{
+		case NO_FRAME :
+		{
+			if(rxBuffer == MPPT_LINK_START_CHAR)
+			{
+				stateMachine->status = START_FOUND;
+				stateMachine->buffer[stateMachine->bufferIndex] = rxBuffer;
+				stateMachine->bufferIndex ++;
+			}
+			else
+			{
+				stateMachine->bufferIndex = 0;
+			}
+
+			frameFound = 0;
+			break;
+		}
+		case START_FOUND :
+		{
+			if(stateMachine->bufferIndex < MPPT_MAX_FRAME_SIZE)
+			{
+				if(rxBuffer == MPPT_LINK_START_CHAR)
+				{
+					initMpptStateMachine(stateMachine);
+					stateMachine->status = START_FOUND;
+					frameFound = 0;
+				}
+				else if(rxBuffer == MPPT_LINK_STOP_CHAR)
+				{
+					stateMachine->status = STOP_FOUND;
+					frameFound = 1;
+				}
+
+				stateMachine->buffer[stateMachine->bufferIndex] = rxBuffer;
+				stateMachine->bufferIndex ++;
+				break;
+			}
+			else
+			{
+				initMpptStateMachine(stateMachine);
+				frameFound = 0;
+				break;
+			}
+		}
+	}
+
+	return frameFound;
 }
 
-void createMpptFrame(MpptFrame *frame, unsigned char *buffer)
+MpptFrameType getFrameType(unsigned char *frameBuffer, int bufferSize)
 {
+	if(bufferSize>0)
+	{
+		switch(frameBuffer[1])
+		{
+			case STATUS_FRAME : return STATUS_FRAME;
+			case EVENT_FRAME : return EVENT_FRAME;
+		}
+	}
 	
-	buffer[0] = MPPT_LINK_START_CHAR;
+	return NA_FRAME;
+}
 
-	memcpy(&buffer[1], &(frame->batteryVoltage), sizeof(frame->batteryVoltage));
-	memcpy(&buffer[5], &(frame->solarCurrent), sizeof(frame->solarCurrent));
+MpptParseResult buildStatusFrame(MpptStatusFrame *statusFrame, unsigned char *frameBuffer, int bufferSize)
+{
+	int i=0;
+	int tmpSizeof = 0;
+
+	if((statusFrame==NULL)|| (frameBuffer == NULL))
+	{
+		return MPPT_ERROR;
+	}
+	else if(bufferSize<3)
+	{
+		return BUFFER_EMPTY;
+	}
+	else if (frameBuffer[0] != MPPT_LINK_START_CHAR)
+	{
+		return CORRUPTION;
+	}
+
+	i++;
+	if(frameBuffer[i] != STATUS_FRAME)
+	{
+		return CORRUPTION;
+	}
+
+	i++;
+
+	/* Parse temperature */
+	tmpSizeof = sizeof(statusFrame->mpptTemperature);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(statusFrame->mpptTemperature), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse solar current*/
+	tmpSizeof = sizeof(statusFrame->solarCurrent);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(statusFrame->solarCurrent), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse total current*/
+	tmpSizeof = sizeof(statusFrame->totalCurrent);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(statusFrame->totalCurrent), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse battery voltage*/
+	tmpSizeof = sizeof(statusFrame->batteryVoltage);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(statusFrame->batteryVoltage), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse duty cycle min*/
+	tmpSizeof = sizeof(statusFrame->dutyCycleMin);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(statusFrame->dutyCycleMin), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse duty cycle max*/
+	tmpSizeof = sizeof(statusFrame->dutyCycleMax);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(statusFrame->dutyCycleMax), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	if(frameBuffer[i] != MPPT_LINK_STOP_CHAR)
+	{
+		return CORRUPTION;
+	}
 	
-	buffer[9] = MPPT_LINK_STOP_CHAR;
+	return MPPT_OK;
+}
 
+MpptParseResult buildEventFrame(MpptEventFrame *eventFrame, unsigned char *frameBuffer, int bufferSize)
+{
+	int i=0;
+	int tmpSizeof = 0;
+
+	if((eventFrame==NULL)|| (frameBuffer == NULL))
+	{
+		return MPPT_ERROR;
+	}
+	else if(bufferSize<3)
+	{
+		return BUFFER_EMPTY;
+	}
+	else if (frameBuffer[0] != MPPT_LINK_START_CHAR)
+	{
+		return CORRUPTION;
+	}
+
+	i++;
+	if(frameBuffer[i] != EVENT_FRAME)
+	{
+		return CORRUPTION;
+	}
+
+	i++;
+
+
+	/* Parse event type */
+	tmpSizeof = sizeof(eventFrame->eventType);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(eventFrame->eventType), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse param 1 */
+	tmpSizeof = sizeof(eventFrame->param1);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(eventFrame->param1), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	/* Parse param 2 */
+	tmpSizeof = sizeof(eventFrame->param2);
+	if((i + tmpSizeof) <= bufferSize)
+	{
+		memcpy(&(eventFrame->param2), &frameBuffer[i], tmpSizeof);
+		i+= tmpSizeof;
+	}
+	else
+	{
+		return BUFFER_EMPTY;
+	}
+
+	if(frameBuffer[i] != MPPT_LINK_STOP_CHAR)
+	{
+		return CORRUPTION;
+	}
+
+	return MPPT_OK;
 }

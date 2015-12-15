@@ -76,7 +76,10 @@
 
 __EXPORT int mppt_main(int argc, char *argv[]);
 
-void handleEndianness(MpptFrame *frame);
+void handleFloatEndianness(float *value);
+void handleEndianness(MpptStatusFrame *statusFrame);
+void statusFrameReceived(MpptStatusFrame *statusFrame);
+void eventFrameReceived(MpptEventFrame *eventFrame);
 int mppt_app_thread_main(int argc, char *argv[]);
 static void usage(const char *reason);
 
@@ -87,26 +90,52 @@ static bool thread_running = false;		/**< Daemon status flag */
 static int deamon_task;				/**< Handle of deamon task / thread */
 static int mavlink_fd = 0;
 
-void handleEndianness(MpptFrame *frame)
+/*  uORB declarations */
+struct battery_status_s _battery_status;
+orb_advert_t _battery_pub;
+
+void handleFloatEndianness(float *value)
 {
 	unsigned char buffer[4];
 	unsigned char temp;
 
-	memcpy(buffer, &frame->batteryVoltage, sizeof(float));
+	memcpy(buffer, value, sizeof(float));
 	temp = buffer[3];
 	buffer[3] = buffer[2];
 	buffer[2] = buffer[1];
 	buffer[1] = buffer[0];
 	buffer[0] = temp;
-	memcpy(&frame->batteryVoltage, buffer, sizeof(float));
+	memcpy(value, buffer, sizeof(float));
+}
 
-	memcpy(buffer, &frame->solarCurrent, sizeof(float));
-	temp = buffer[3];
-	buffer[3] = buffer[2];
-	buffer[2] = buffer[1];
-	buffer[1] = buffer[0];
-	buffer[0] = temp;
-	memcpy(&frame->solarCurrent, buffer, sizeof(float));
+void handleEndianness(MpptStatusFrame *statusFrame)
+{
+	handleFloatEndianness(&statusFrame->mpptTemperature);
+	handleFloatEndianness(&statusFrame->solarCurrent);
+	handleFloatEndianness(&statusFrame->totalCurrent);
+	handleFloatEndianness(&statusFrame->batteryVoltage);
+}
+
+void statusFrameReceived(MpptStatusFrame *statusFrame)
+{
+	hrt_abstime timestamp = hrt_absolute_time();
+
+	/*Handle PIC Endianness*/
+	handleEndianness(statusFrame);
+
+	_battery_status.timestamp = timestamp;
+	_battery_status.voltage_v = statusFrame->batteryVoltage;
+	_battery_status.voltage_filtered_v = statusFrame->batteryVoltage;
+	_battery_status.current_a = statusFrame->solarCurrent;
+	_battery_status.discharged_mah = -1;
+
+	/* Publish message */
+	orb_publish(ORB_ID(battery_status), _battery_pub, &_battery_status);
+}
+
+void eventFrameReceived(MpptEventFrame *eventFrame)
+{
+
 }
 
 /* Main Thread */
@@ -114,8 +143,6 @@ int mppt_app_thread_main(int argc, char *argv[])
 {
 	const int timeout = 3000;
 	uint8_t buf[20];
-//	uint8_t buf2[10];
-	MpptFrame frame;
 	
 	/* ======================  UART4 Configuration ======================== */
 
@@ -157,8 +184,7 @@ int mppt_app_thread_main(int argc, char *argv[])
 
 	/* ==================== uORB messages initialization ======================*/
 
-	struct battery_status_s _battery_status;
-	orb_advert_t _battery_pub = orb_advertise(ORB_ID(battery_status), &_battery_status);
+	_battery_pub = orb_advertise(ORB_ID(battery_status), &_battery_status);
 
 	/* ==================== POLL initialization ======================*/
 	struct pollfd fds[1];
@@ -169,13 +195,15 @@ int mppt_app_thread_main(int argc, char *argv[])
 	
 	/* ==================== MPPT frame messages initialization ======================*/
 
-	initMpptFrame(&frame);
-	
+	MpptParsingStateMachine stateMachine;
+	initMpptStateMachine(&stateMachine);
+
+	stateMachine.eventFrameFound = eventFrameReceived;
+	stateMachine.statusFrameFound = statusFrameReceived;
 
 	/* ==================== MAIN loop ======================*/
 
 	unsigned counter = 0;
-	unsigned int counter2 = 0;
 	char bufferPrintf[50];
 	while (!thread_should_exit) {
 	
@@ -193,51 +221,7 @@ int mppt_app_thread_main(int argc, char *argv[])
 				usleep(1000);
 			}
 
-			for(int i=0; i < nread; i++)
-			{
-//				buf2[counter2] = buf[i];
-
-				if(parseMpptFrame(&buf[i], &frame))
-				{
-					
-					hrt_abstime timestamp = hrt_absolute_time();
-
-					/* A complete message is available */
-					
-					/*Handle PIC Endianness*/
-					handleEndianness(&frame);
-
-					//mavlink_log_info(mavlink_fd, "Message complete \n");
-
-					//sprintf(bufferPrintf, "Buffer : %x %x %x %x %x %x %x %x %x %x\n", buf2[0],buf2[1],buf2[2],buf2[3],buf2[4],buf2[5],buf2[6],buf2[7],buf2[8],buf2[9]);
-					//mavlink_log_info(mavlink_fd, bufferPrintf);
-
-					//sprintf(bufferPrintf, "voltage : %f\n", (double)frame.batteryVoltage);
-					//mavlink_log_info(mavlink_fd, bufferPrintf);
-
-					//sprintf(bufferPrintf, "current : %f\n", (double)frame.solarCurrent);
-					//mavlink_log_info(mavlink_fd, bufferPrintf);
-
-					_battery_status.timestamp = timestamp;
-					_battery_status.voltage_v = frame.batteryVoltage;
-					_battery_status.voltage_filtered_v = frame.batteryVoltage;
-					_battery_status.current_a = frame.solarCurrent;
-					_battery_status.discharged_mah = -1;
-
-//					counter2 = 0;
-//					for(int j=0; j<10; j++)
-//					{
-//						buf2[j] = 0;
-//					}
-
-					/* Publish message */
-					orb_publish(ORB_ID(battery_status), _battery_pub, &_battery_status);
-				}
-				else
-				{
-					counter2++;
-				}
-			}
+			processRxBuffer(&stateMachine, buf, nread);
 		
 		}
 		else
