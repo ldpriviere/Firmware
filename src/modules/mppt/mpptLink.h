@@ -7,8 +7,8 @@
 
 #define MPPT_LINK_START_CHAR 0xFE
 #define MPPT_LINK_STOP_CHAR	0x55
-
 #define MPPT_MAX_FRAME_SIZE	50
+#define MPPT_SIZEOF_FLOAT24	3
 
 typedef enum _MpptFrameType
 {

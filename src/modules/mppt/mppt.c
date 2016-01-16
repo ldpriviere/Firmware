@@ -101,14 +101,12 @@ orb_advert_t _mppt_pub;
 void handleFloatEndianness(float *value)
 {
 	unsigned char buffer[4];
-	unsigned char temp;
 
-	memcpy(buffer, value, sizeof(float));
-	temp = buffer[3];
+	memcpy(buffer, value, MPPT_SIZEOF_FLOAT24);
 	buffer[3] = buffer[2];
 	buffer[2] = buffer[1];
 	buffer[1] = buffer[0];
-	buffer[0] = temp;
+	buffer[0] = 0;
 	memcpy(value, buffer, sizeof(float));
 }
 

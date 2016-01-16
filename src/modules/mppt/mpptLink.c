@@ -13,19 +13,19 @@ int createMpptStatusFrame(MpptStatusFrame *statusFrame, unsigned char *buffer)
 	i++;
 
 	/* Copy temperature */
-	memcpy(&buffer[i], &(statusFrame->mpptTemperature), sizeof(statusFrame->mpptTemperature));
+	memcpy(&buffer[i], &(statusFrame->mpptTemperature), MPPT_SIZEOF_FLOAT24);
 	i+=sizeof(statusFrame->mpptTemperature);
 
 	/* Copy solar current*/
-	memcpy(&buffer[i], &(statusFrame->solarCurrent), sizeof(statusFrame->solarCurrent));
+	memcpy(&buffer[i], &(statusFrame->solarCurrent), MPPT_SIZEOF_FLOAT24);
 	i+=sizeof(statusFrame->solarCurrent);
 
 	/* Copy total current*/
-	memcpy(&buffer[i], &(statusFrame->totalCurrent), sizeof(statusFrame->totalCurrent));
+	memcpy(&buffer[i], &(statusFrame->totalCurrent), MPPT_SIZEOF_FLOAT24);
 	i+=sizeof(statusFrame->totalCurrent);
 
 	/* Copy battery voltage*/
-	memcpy(&buffer[i], &(statusFrame->batteryVoltage), sizeof(statusFrame->batteryVoltage));
+	memcpy(&buffer[i], &(statusFrame->batteryVoltage), MPPT_SIZEOF_FLOAT24);
 	i+=sizeof(statusFrame->batteryVoltage);
 
 	/* Copy duty cycle min*/
@@ -225,7 +225,7 @@ MpptParseResult buildStatusFrame(MpptStatusFrame *statusFrame, unsigned char *fr
 	i++;
 
 	/* Parse temperature */
-	tmpSizeof = sizeof(statusFrame->mpptTemperature);
+	tmpSizeof = MPPT_SIZEOF_FLOAT24;
 	if((i + tmpSizeof) <= bufferSize)
 	{
 		memcpy(&(statusFrame->mpptTemperature), &frameBuffer[i], tmpSizeof);
@@ -237,7 +237,7 @@ MpptParseResult buildStatusFrame(MpptStatusFrame *statusFrame, unsigned char *fr
 	}
 
 	/* Parse solar current*/
-	tmpSizeof = sizeof(statusFrame->solarCurrent);
+	tmpSizeof = MPPT_SIZEOF_FLOAT24;
 	if((i + tmpSizeof) <= bufferSize)
 	{
 		memcpy(&(statusFrame->solarCurrent), &frameBuffer[i], tmpSizeof);
@@ -249,7 +249,7 @@ MpptParseResult buildStatusFrame(MpptStatusFrame *statusFrame, unsigned char *fr
 	}
 
 	/* Parse total current*/
-	tmpSizeof = sizeof(statusFrame->totalCurrent);
+	tmpSizeof = MPPT_SIZEOF_FLOAT24;
 	if((i + tmpSizeof) <= bufferSize)
 	{
 		memcpy(&(statusFrame->totalCurrent), &frameBuffer[i], tmpSizeof);
@@ -261,7 +261,7 @@ MpptParseResult buildStatusFrame(MpptStatusFrame *statusFrame, unsigned char *fr
 	}
 
 	/* Parse battery voltage*/
-	tmpSizeof = sizeof(statusFrame->batteryVoltage);
+	tmpSizeof = MPPT_SIZEOF_FLOAT24;
 	if((i + tmpSizeof) <= bufferSize)
 	{
 		memcpy(&(statusFrame->batteryVoltage), &frameBuffer[i], tmpSizeof);
