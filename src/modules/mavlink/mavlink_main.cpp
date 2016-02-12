@@ -1380,6 +1380,7 @@ Mavlink::task_main(int argc, char *argv[])
 	switch (_mode) {
 	case MAVLINK_MODE_NORMAL:
 		configure_stream("SYS_STATUS", 1.0f);
+		configure_stream("MPPT_STATUS", 1.0f);
 		configure_stream("GPS_GLOBAL_ORIGIN", 0.5f);
 		configure_stream("HIGHRES_IMU", 1.0f);
 		configure_stream("ATTITUDE", 10.0f);
@@ -1395,6 +1396,7 @@ Mavlink::task_main(int argc, char *argv[])
 
 	case MAVLINK_MODE_CAMERA:
 		configure_stream("SYS_STATUS", 1.0f);
+		configure_stream("MPPT_STATUS", 1.0f);
 		configure_stream("ATTITUDE", 15.0f);
 		configure_stream("GLOBAL_POSITION_INT", 15.0f);
 		configure_stream("CAMERA_CAPTURE", 1.0f);
