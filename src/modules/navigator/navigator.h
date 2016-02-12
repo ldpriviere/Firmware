@@ -101,6 +101,12 @@ public:
 	void		load_fence_from_file(const char *filename);
 
 	/**
+	 * Publish the geofence result
+	 */
+	void publish_geofence_result();
+
+
+	/**
 	 * Setters
 	 */
 	void		set_can_loiter_at_sp(bool can_loiter) { _can_loiter_at_sp = can_loiter; }
@@ -122,6 +128,7 @@ public:
 	float		get_loiter_radius() { return _param_loiter_radius.get(); }
 	float		get_acceptance_radius() { return _param_acceptance_radius.get(); }
 	int		get_mavlink_fd() { return _mavlink_fd; }
+	struct geofence_result_s* get_geofence_result() { return &_geofence_result; }
 
 private:
 
@@ -141,6 +148,7 @@ private:
 	int		_param_update_sub;		/**< param update subscription */
 
 	orb_advert_t	_pos_sp_triplet_pub;		/**< publish position setpoint triplet */
+	orb_advert_t	_geofence_result_pub;
 
 	vehicle_status_s				_vstatus;		/**< vehicle status */
 	vehicle_control_mode_s				_control_mode;		/**< vehicle control mode */
@@ -149,6 +157,8 @@ private:
 	mission_item_s 					_mission_item;		/**< current mission item */
 	navigation_capabilities_s			_nav_caps;		/**< navigation capabilities */
 	position_setpoint_triplet_s			_pos_sp_triplet;	/**< triplet of position setpoints */
+
+	geofence_result_s				_geofence_result;
 
 	bool 		_mission_item_valid;		/**< flags if the current mission item is valid */
 

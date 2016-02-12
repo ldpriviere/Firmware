@@ -46,6 +46,7 @@
 #include <uORB/topics/vehicle_gps_position.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/home_position.h>
+#include <uORB/topics/geofence_result.h>
 #include <controllib/blocks.hpp>
 #include <controllib/block/BlockParam.hpp>
 #include <drivers/drv_hrt.h>
@@ -80,6 +81,8 @@ public:
 	bool inside(const struct vehicle_global_position_s &global_position,
 		    const struct vehicle_gps_position_s &gps_position, float baro_altitude_amsl,
 		    const struct home_position_s home_pos, bool home_position_set);
+
+	bool inside(double lat, double lon, float altitude);
 
 	bool inside_polygon(double lat, double lon, float altitude);
 
@@ -132,7 +135,6 @@ private:
 
 	int _mavlinkFd;
 
-	bool inside(double lat, double lon, float altitude);
 	bool inside(const struct vehicle_global_position_s &global_position);
 	bool inside(const struct vehicle_global_position_s &global_position, float baro_altitude_amsl);
 };
