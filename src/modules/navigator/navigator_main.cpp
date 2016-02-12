@@ -334,17 +334,17 @@ Navigator::task_main()
 			global_position_update();
 
 			/* Check geofence violation */
-			if (!_geofence.inside(&_global_pos)) {
-
-				/* Issue a warning about the geofence violation once */
-				if (!_geofence_violation_warning_sent) {
-					mavlink_log_critical(_mavlink_fd, "#audio: Geofence violation");
-					_geofence_violation_warning_sent = true;
-				}
-			} else {
-				/* Reset the _geofence_violation_warning_sent field */
-				_geofence_violation_warning_sent = false;
-			}
+//			if (!_geofence.inside(&_global_pos)) {
+//
+//				/* Issue a warning about the geofence violation once */
+//				if (!_geofence_violation_warning_sent) {
+//					mavlink_log_critical(_mavlink_fd, "#audio: Geofence violation");
+//					_geofence_violation_warning_sent = true;
+//				}
+//			} else {
+//				/* Reset the _geofence_violation_warning_sent field */
+//				_geofence_violation_warning_sent = false;
+//			}
 		}
 
 		/* Do stuff according to navigation state set by commander */
