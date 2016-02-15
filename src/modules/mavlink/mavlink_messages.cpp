@@ -543,12 +543,12 @@ protected:
 		if (_mppt_sub->update(&status)) {
 			mavlink_mppt_status_t msg;
 
-			msg.batteryVoltage = status.batteryVoltage;
+			msg.batteryVoltage = status.batteryVoltage* 1000.0f;
 			msg.dutyCycleMax = status.dutyCycleMax;
 			msg.dutyCycleMin = status.dutyCycleMin;
-			msg.mpptTemperature = status.mpptTemperature;
-			msg.solarCurrent = status.solarCurrent;
-			msg.totalCurrent = status.totalCurrent;
+			msg.mpptTemperature = status.mpptTemperature* 1000.0f;
+			msg.solarCurrent = status.solarCurrent* 1000.0f;
+			msg.totalCurrent = status.totalCurrent* 1000.0f;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_MPPT_STATUS, &msg);
 		}
