@@ -1,9 +1,9 @@
 /** @file
- *	@brief MAVLink comm protocol testsuite generated from mppt.xml
+ *	@brief MAVLink comm protocol testsuite generated from sunbirds.xml
  *	@see http://qgroundcontrol.org/mavlink/
  */
-#ifndef MPPT_TESTSUITE_H
-#define MPPT_TESTSUITE_H
+#ifndef SUNBIRDS_TESTSUITE_H
+#define SUNBIRDS_TESTSUITE_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,12 +12,12 @@ extern "C" {
 #ifndef MAVLINK_TEST_ALL
 #define MAVLINK_TEST_ALL
 static void mavlink_test_common(uint8_t, uint8_t, mavlink_message_t *last_msg);
-static void mavlink_test_mppt(uint8_t, uint8_t, mavlink_message_t *last_msg);
+static void mavlink_test_sunbirds(uint8_t, uint8_t, mavlink_message_t *last_msg);
 
 static void mavlink_test_all(uint8_t system_id, uint8_t component_id, mavlink_message_t *last_msg)
 {
 	mavlink_test_common(system_id, component_id, last_msg);
-	mavlink_test_mppt(system_id, component_id, last_msg);
+	mavlink_test_sunbirds(system_id, component_id, last_msg);
 }
 #endif
 
@@ -72,7 +72,7 @@ static void mavlink_test_mppt_status(uint8_t system_id, uint8_t component_id, ma
         MAVLINK_ASSERT(memcmp(&packet1, &packet2, sizeof(packet1)) == 0);
 }
 
-static void mavlink_test_mppt(uint8_t system_id, uint8_t component_id, mavlink_message_t *last_msg)
+static void mavlink_test_sunbirds(uint8_t system_id, uint8_t component_id, mavlink_message_t *last_msg)
 {
 	mavlink_test_mppt_status(system_id, component_id, last_msg);
 }
@@ -80,4 +80,4 @@ static void mavlink_test_mppt(uint8_t system_id, uint8_t component_id, mavlink_m
 #ifdef __cplusplus
 }
 #endif // __cplusplus
-#endif // MPPT_TESTSUITE_H
+#endif // SUNBIRDS_TESTSUITE_H

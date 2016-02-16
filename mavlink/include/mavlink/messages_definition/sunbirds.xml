@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<mavlink>
+    <include>common.xml</include>
+	<version>3</version>
+	<enums>
+	</enums>
+	<messages>
+		<message id="157" name="MPPT_STATUS">
+			<description>This message contains all the MPPT telemetries</description>
+			<field type="uint16_t" name="mpptTemperature">MPPT temperature in C.</field>
+			<field type="uint16_t" name="solarCurrent">Available solar current.</field>
+			<field type="uint16_t" name="totalCurrent">Total current consumption.</field>
+			<field type="uint16_t" name="batteryVoltage">Total battery voltage.</field>
+			<field type="uint8_t" name="dutyCycleMin">Min duty cycle.</field>
+			<field type="uint8_t" name="dutyCycleMax">Max dudy cycle.</field>
+		</message>
+	</messages>
+</mavlink>

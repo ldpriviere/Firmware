@@ -1,5 +1,5 @@
 /** @file
- *	@brief MAVLink comm protocol built from mppt.xml
+ *	@brief MAVLink comm protocol built from sunbirds.xml
  *	@see http://mavlink.org
  */
 #ifndef MAVLINK_H
@@ -22,6 +22,6 @@
 #endif
 
 #include "version.h"
-#include "mppt.h"
+#include "sunbirds.h"
 
 #endif // MAVLINK_H

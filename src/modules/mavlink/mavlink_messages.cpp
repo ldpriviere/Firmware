@@ -78,7 +78,6 @@
 
 #include "mavlink_messages.h"
 #include "mavlink_main.h"
-#include "mppt.h"
 
 static uint16_t cm_uint16_from_m_float(float m);
 static void get_mavlink_mode_state(struct vehicle_status_s *status, struct position_setpoint_triplet_s *pos_sp_triplet,
