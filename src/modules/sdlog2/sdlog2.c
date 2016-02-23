@@ -89,6 +89,7 @@
 #include <uORB/topics/system_power.h>
 #include <uORB/topics/servorail_status.h>
 #include <uORB/topics/wind_estimate.h>
+#include <uORB/topics/mppt_status.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
@@ -949,6 +950,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct servorail_status_s servorail_status;
 		struct satellite_info_s sat_info;
 		struct wind_estimate_s wind_estimate;
+		struct mppt_status_s mppt_status;
 	} buf;
 
 	memset(&buf, 0, sizeof(buf));
@@ -990,6 +992,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_GS1B_s log_GS1B;
 			struct log_TECS_s log_TECS;
 			struct log_WIND_s log_WIND;
+			struct log_MPPT_s log_MPPT;
 		} body;
 	} log_msg = {
 		LOG_PACKET_HEADER_INIT(0)
@@ -1026,6 +1029,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		int system_power_sub;
 		int servorail_status_sub;
 		int wind_sub;
+		int mppt_sub;
 	} subs;
 
 	subs.cmd_sub = orb_subscribe(ORB_ID(vehicle_command));
@@ -1060,6 +1064,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.wind_sub = orb_subscribe(ORB_ID(wind_estimate));
 	/* we need to rate-limit wind, as we do not need the full update rate */
 	orb_set_interval(subs.wind_sub, 90);
+	subs.mppt_sub = orb_subscribe(ORB_ID(mppt_status));
 
 	thread_running = true;
 
@@ -1621,6 +1626,18 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_WIND.cov_x = buf.wind_estimate.covariance_north;
 			log_msg.body.log_WIND.cov_y = buf.wind_estimate.covariance_east;
 			LOGBUFFER_WRITE_AND_COUNT(WIND);
+		}
+
+		/* --- MPPT STATUS --- */
+		if (copy_if_updated(ORB_ID(mppt_status), subs.mppt_sub, &buf.mppt_status)) {
+			log_msg.msg_type = LOG_MPPT_MSG;
+			log_msg.body.log_MPPT.batteryVoltage = buf.mppt_status.batteryVoltage;
+			log_msg.body.log_MPPT.dutyCycleMax = buf.mppt_status.dutyCycleMax;
+			log_msg.body.log_MPPT.dutyCycleMin = buf.mppt_status.dutyCycleMin;
+			log_msg.body.log_MPPT.mpptTemperature = buf.mppt_status.mpptTemperature;
+			log_msg.body.log_MPPT.solarCurrent = buf.mppt_status.solarCurrent;
+			log_msg.body.log_MPPT.totalCurrent = buf.mppt_status.totalCurrent;
+			LOGBUFFER_WRITE_AND_COUNT(MPPT);
 		}
 
 		/* signal the other thread new data, but not yet unlock */
