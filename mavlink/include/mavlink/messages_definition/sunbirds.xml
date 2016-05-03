@@ -14,5 +14,13 @@
 			<field type="uint8_t" name="dutyCycleMin">Min duty cycle.</field>
 			<field type="uint8_t" name="dutyCycleMax">Max dudy cycle.</field>
 		</message>
+		<message id="158" name="SB_CAM_FOOTPRINT">
+			<description>This message contains all the data related to a camera footprint</description>
+			<field type="uint64_t" name="timestamp">Timestamp</field>
+			<field type="int32_t" name="lat">Latitude in degrees * 1E7</field>
+			<field type="int32_t" name="lon">Longitude in degrees * 1E7</field>
+			<field type="int32_t" name="alt">Altitude relative in meters * 1E3</field>
+			<field type="int32_t" name="yaw">Yaw in radians * 1E3</field>
+		</message>
 	</messages>
 </mavlink>

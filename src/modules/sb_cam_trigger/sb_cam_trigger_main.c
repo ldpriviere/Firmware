@@ -22,6 +22,9 @@
 
 #include <uORB/uORB.h>
 #include <uORB/topics/parameter_update.h>
+#include <uORB/topics/home_position.h>
+#include <uORB/topics/vehicle_global_position.h>
+#include <uORB/topics/sb_cam_footprint.h>
 #include <poll.h>
 #include <drivers/drv_gpio.h>
 #include <drivers/drv_hrt.h>
@@ -61,7 +64,16 @@ param_t _p_activation_time;
 uint64_t last_engage_time = 0;
 int isTriggering = 0;
 
-int 		_params_sub = -1; /**< notification of parameter updates */
+int 	_params_sub = -1; 		/**< notification of parameter updates */
+int		_home_pos_sub;			/**< home position subscription */
+int		_global_pos_sub;		/**< global position subscription */
+
+
+struct home_position_s				_home_pos;			/**< home position*/
+struct vehicle_global_position_s	_global_pos;		/**< global vehicle position */
+
+struct sb_cam_footprint_s _sb_cam_footprint;
+orb_advert_t _sb_cam_footprint_pub;
 
 static uint32_t _gpios[6] = {
 	GPIO_GPIO0_OUTPUT,
@@ -96,6 +108,14 @@ void camera_engage()
 	last_engage_time = hrt_absolute_time();
 	camera_trigger(trigger_polarity);
 	isTriggering = 1;
+
+	_sb_cam_footprint.timestamp = last_engage_time;
+	_sb_cam_footprint.alt = _global_pos.alt - _home_pos.alt;
+	_sb_cam_footprint.lat = _global_pos.lat;
+	_sb_cam_footprint.lon = _global_pos.lon;
+	_sb_cam_footprint.yaw = _global_pos.yaw;
+
+	orb_publish(ORB_ID(sb_cam_footprint), _sb_cam_footprint_pub, &_sb_cam_footprint);
 }
 
 void camera_disengage()
@@ -132,15 +152,22 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 	stm32_configgpio(_gpios[trigger_pin-1]);
 	stm32_gpiowrite(_gpios[trigger_pin-1], !trigger_polarity);
 
+	_sb_cam_footprint_pub = orb_advertise(ORB_ID(sb_cam_footprint), &_sb_cam_footprint);
 
 	_params_sub = orb_subscribe(ORB_ID(parameter_update));
+	_global_pos_sub = orb_subscribe(ORB_ID(vehicle_global_position));
+	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
 
 	/* wakeup source(s) */
-	struct pollfd fds[1];
+	struct pollfd fds[3];
 
 	/* Setup of loop */
 	fds[0].fd = _params_sub;
 	fds[0].events = POLLIN;
+	fds[1].fd = _global_pos_sub;
+	fds[1].events = POLLIN;
+	fds[2].fd = _home_pos_sub;
+	fds[2].events = POLLIN;
 
 	/* ==================== MAIN loop ======================*/
 	while (!thread_should_exit) {
@@ -162,6 +189,16 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 
 			/* update parameters from storage */
 			parameters_update();
+		}
+
+		/* global position updated */
+		if (fds[1].revents & POLLIN) {
+			orb_copy(ORB_ID(vehicle_global_position), _global_pos_sub, &_global_pos);
+		}
+
+		/* home position updated */
+		if (fds[2].revents & POLLIN) {
+			orb_copy(ORB_ID(home_position), _home_pos_sub, &_home_pos);
 		}
 
 		if(trigger_ono)

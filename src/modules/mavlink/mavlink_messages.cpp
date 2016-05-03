@@ -69,6 +69,7 @@
 #include <uORB/topics/airspeed.h>
 #include <uORB/topics/battery_status.h>
 #include <uORB/topics/mppt_status.h>
+#include <uORB/topics/sb_cam_footprint.h>
 #include <uORB/topics/navigation_capabilities.h>
 #include <drivers/drv_rc_input.h>
 #include <drivers/drv_pwm_output.h>
@@ -550,6 +551,64 @@ protected:
 			msg.totalCurrent = status.totalCurrent* 1000.0f;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_MPPT_STATUS, &msg);
+		}
+	}
+};
+
+class MavlinkCamFootprint : public MavlinkStream
+{
+public:
+	const char *get_name() const
+	{
+		return MavlinkCamFootprint::get_name_static();
+	}
+
+	static const char *get_name_static()
+	{
+		return "SB_CAM_FOOTPRINT";
+	}
+
+	uint8_t get_id()
+	{
+		return MAVLINK_MSG_ID_SB_CAM_FOOTPRINT;
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkCamFootprint(mavlink);
+	}
+
+	unsigned get_size()
+	{
+		return MAVLINK_MSG_ID_SB_CAM_FOOTPRINT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES;
+	}
+
+private:
+	MavlinkOrbSubscription *_sb_cam_footprint_sub;
+
+	/* do not allow top copying this class */
+	MavlinkCamFootprint(MavlinkCamFootprint &);
+	MavlinkCamFootprint& operator = (const MavlinkCamFootprint &);
+
+protected:
+	explicit MavlinkCamFootprint(Mavlink *mavlink) : MavlinkStream(mavlink),
+	_sb_cam_footprint_sub(_mavlink->add_orb_subscription(ORB_ID(sb_cam_footprint)))
+	{}
+
+	void send(const hrt_abstime t)
+	{
+		struct sb_cam_footprint_s footprint;
+
+		if (_sb_cam_footprint_sub->update(&footprint)) {
+			mavlink_sb_cam_footprint_t msg;
+
+			msg.timestamp = footprint.timestamp;
+			msg.alt = (double)footprint.alt*1E3;
+			msg.lat = (double)footprint.lat*1E7;
+			msg.lon = (double)footprint.lon*1E7;
+			msg.yaw = (double)footprint.yaw*1E3;
+
+			_mavlink->send_message(MAVLINK_MSG_ID_SB_CAM_FOOTPRINT, &msg);
 		}
 	}
 };
@@ -2195,6 +2254,7 @@ StreamListItem *streams_list[] = {
 	new StreamListItem(&MavlinkStreamCommandLong::new_instance, &MavlinkStreamCommandLong::get_name_static),
 	new StreamListItem(&MavlinkStreamSysStatus::new_instance, &MavlinkStreamSysStatus::get_name_static),
 	new StreamListItem(&MavlinkMpptStatus::new_instance, &MavlinkMpptStatus::get_name_static),
+	new StreamListItem(&MavlinkCamFootprint::new_instance, &MavlinkCamFootprint::get_name_static),
 	new StreamListItem(&MavlinkStreamHighresIMU::new_instance, &MavlinkStreamHighresIMU::get_name_static),
 	new StreamListItem(&MavlinkStreamAttitude::new_instance, &MavlinkStreamAttitude::get_name_static),
 	new StreamListItem(&MavlinkStreamAttitudeQuaternion::new_instance, &MavlinkStreamAttitudeQuaternion::get_name_static),
