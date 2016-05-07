@@ -286,7 +286,7 @@ int open_log_file()
 	char log_file_path[64] = "";
 
 	if (gps_time != 0) {
-		/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/19_37_52.bin */
+		/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/CAM_19_37_52.txt */
 		time_t gps_time_sec = gps_time / 1000000;
 		struct tm t;
 		gmtime_r(&gps_time_sec, &t);
@@ -298,8 +298,8 @@ int open_log_file()
 
 		/* look for the next file that does not exist */
 		while (file_number <= MAX_NO_LOGFILE) {
-			/* format log file path: e.g. /fs/microsd/sess001/log001.bin */
-			snprintf(log_file_name, sizeof(log_file_name), "CAM_%03u.bin", file_number);
+			/* format log file path: e.g. /fs/microsd/sess001/CAM_001.txt */
+			snprintf(log_file_name, sizeof(log_file_name), "CAM_%03u.txt", file_number);
 			snprintf(log_file_path, sizeof(log_file_path), "%s/%s", "/fs/microsd/log", log_file_name);
 
 			if (!file_exist(log_file_path)) {
