@@ -7,6 +7,10 @@
 /****************************************************************************
  * Included Files
  ****************************************************************************/
+#include <nuttx/config.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/prctl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +28,7 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/home_position.h>
 #include <uORB/topics/vehicle_global_position.h>
+#include <uORB/topics/vehicle_gps_position.h>
 #include <uORB/topics/sb_cam_footprint.h>
 #include <poll.h>
 #include <drivers/drv_gpio.h>
@@ -40,10 +45,13 @@ void camera_disengage();
 void camera_trigger(int trigger);
 void doTrigger();
 void parameters_update();
+int open_log_file();
+bool file_exist(const char *filename);
 
-static bool thread_should_exit = false;		/**< Daemon exit flag */
-static bool thread_running = false;		/**< Daemon status flag */
-static int deamon_task;				/**< Handle of deamon task / thread */
+static const unsigned MAX_NO_LOGFILE = 999;		/**< Maximum number of log files */
+static bool thread_should_exit = false;			/**< Daemon exit flag */
+static bool thread_running = false;				/**< Daemon status flag */
+static int deamon_task;							/**< Handle of deamon task / thread */
 
 int trigger_ono = 1;
 param_t _p_trigger_ono;
@@ -67,13 +75,20 @@ int isTriggering = 0;
 int 	_params_sub = -1; 		/**< notification of parameter updates */
 int		_home_pos_sub;			/**< home position subscription */
 int		_global_pos_sub;		/**< global position subscription */
-
+int		_gps_pos_sub;			/**< GPS position subscription */
 
 struct home_position_s				_home_pos;			/**< home position*/
 struct vehicle_global_position_s	_global_pos;		/**< global vehicle position */
+struct vehicle_gps_position_s 		_gps_pos;				/**< GPS position  */
 
 struct sb_cam_footprint_s _sb_cam_footprint;
 orb_advert_t _sb_cam_footprint_pub;
+
+/* GPS time, used for log files naming */
+static uint64_t gps_time = 0;
+
+/*Log file descriptor*/
+int log_fd;
 
 static uint32_t _gpios[6] = {
 	GPIO_GPIO0_OUTPUT,
@@ -105,6 +120,9 @@ void doTrigger()
 
 void camera_engage()
 {
+	int n;
+	char log_line_buffer[100];
+
 	last_engage_time = hrt_absolute_time();
 	camera_trigger(trigger_polarity);
 	isTriggering = 1;
@@ -116,6 +134,20 @@ void camera_engage()
 	_sb_cam_footprint.yaw = _global_pos.yaw;
 
 	orb_publish(ORB_ID(sb_cam_footprint), _sb_cam_footprint_pub, &_sb_cam_footprint);
+
+	snprintf(log_line_buffer, sizeof(log_line_buffer), "%d;%f;%f;%f;%f\n",
+			last_engage_time,
+			(double)_sb_cam_footprint.alt,
+			_sb_cam_footprint.lat,
+			_sb_cam_footprint.lon,
+			(double)_sb_cam_footprint.yaw);
+
+	fsync(log_fd);
+	n = write(log_fd, log_line_buffer, strlen(log_line_buffer));
+
+	if (n < 0) {
+		err(1, "error writing log file");
+	}
 }
 
 void camera_disengage()
@@ -137,6 +169,7 @@ void parameters_update()
 	param_get(_p_trigger_polarity, &trigger_polarity);
 	param_get(_p_activation_time, &activation_time);
 }
+
 /* Main Thread */
 int sb_cam_trigger_thread_main(int argc, char *argv[])
 {
@@ -157,9 +190,11 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 	_params_sub = orb_subscribe(ORB_ID(parameter_update));
 	_global_pos_sub = orb_subscribe(ORB_ID(vehicle_global_position));
 	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
+	_gps_pos_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
+
 
 	/* wakeup source(s) */
-	struct pollfd fds[3];
+	struct pollfd fds[4];
 
 	/* Setup of loop */
 	fds[0].fd = _params_sub;
@@ -168,6 +203,14 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 	fds[1].events = POLLIN;
 	fds[2].fd = _home_pos_sub;
 	fds[2].events = POLLIN;
+	fds[3].fd = _gps_pos_sub;
+	fds[3].events = POLLIN;
+
+	if (!orb_copy(ORB_ID(vehicle_gps_position), _gps_pos_sub, &_gps_pos)) {
+		gps_time = _gps_pos.time_gps_usec;
+	}
+
+	log_fd = open_log_file();
 
 	/* ==================== MAIN loop ======================*/
 	while (!thread_should_exit) {
@@ -201,6 +244,12 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 			orb_copy(ORB_ID(home_position), _home_pos_sub, &_home_pos);
 		}
 
+		/* GPS position updated */
+		if (fds[3].revents & POLLIN) {
+			orb_copy(ORB_ID(vehicle_gps_position), _gps_pos_sub, &_gps_pos);
+			gps_time = _gps_pos.time_gps_usec;
+		}
+
 		if(trigger_ono)
 		{
 			doTrigger();
@@ -212,6 +261,8 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 	thread_running = false;
 
 	fflush(stdout);
+	fsync(log_fd);
+	close(log_fd);
 
 	return 0;
 }
@@ -224,6 +275,59 @@ static void usage(const char *reason)
 	fprintf(stderr, "usage: sb_cam_trigger {start|stop|status}\n\n");
 	exit(1);
 }
+
+int open_log_file()
+{
+	/* string to hold the path to the log */
+	char log_file_name[32] = "";
+	char log_file_path[64] = "";
+
+	if (gps_time != 0) {
+		/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/19_37_52.bin */
+		time_t gps_time_sec = gps_time / 1000000;
+		struct tm t;
+		gmtime_r(&gps_time_sec, &t);
+		strftime(log_file_name, sizeof(log_file_name), "CAM_%H_%M_%S.txt", &t);
+		snprintf(log_file_path, sizeof(log_file_path), "%s/%s", "/fs/microsd/log", log_file_name);
+
+	} else {
+		uint16_t file_number = 1; // start with file log001
+
+		/* look for the next file that does not exist */
+		while (file_number <= MAX_NO_LOGFILE) {
+			/* format log file path: e.g. /fs/microsd/sess001/log001.bin */
+			snprintf(log_file_name, sizeof(log_file_name), "CAM_%03u.bin", file_number);
+			snprintf(log_file_path, sizeof(log_file_path), "%s/%s", "/fs/microsd/log", log_file_name);
+
+			if (!file_exist(log_file_path)) {
+				break;
+			}
+
+			file_number++;
+		}
+	}
+
+	int fd = open(log_file_path, O_CREAT | O_WRONLY | O_DSYNC);
+
+	if (fd < 0) {
+		warn("failed opening log: %s", log_file_name);
+
+	} else {
+		warnx("log file: %s", log_file_name);
+	}
+
+	return fd;
+}
+
+/**
+ * @return 0 if file exists
+ */
+bool file_exist(const char *filename)
+{
+	struct stat buffer;
+	return stat(filename, &buffer) == 0;
+}
+
 
 int sb_cam_trigger_main(int argc, char *argv[])
 {
