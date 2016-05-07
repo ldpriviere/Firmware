@@ -88,7 +88,7 @@ orb_advert_t _sb_cam_footprint_pub;
 static uint64_t gps_time = 0;
 
 /*Log file descriptor*/
-int log_fd;
+int log_fd = -1;
 
 static uint32_t _gpios[6] = {
 	GPIO_GPIO0_OUTPUT,
@@ -135,18 +135,21 @@ void camera_engage()
 
 	orb_publish(ORB_ID(sb_cam_footprint), _sb_cam_footprint_pub, &_sb_cam_footprint);
 
-	snprintf(log_line_buffer, sizeof(log_line_buffer), "%d;%f;%f;%f;%f\n",
-			last_engage_time,
-			(double)_sb_cam_footprint.alt,
-			_sb_cam_footprint.lat,
-			_sb_cam_footprint.lon,
-			(double)_sb_cam_footprint.yaw);
+	if(log_fd >= 0)
+	{
+		snprintf(log_line_buffer, sizeof(log_line_buffer), "%d;%f;%f;%f;%f\n",
+				last_engage_time,
+				(double)_sb_cam_footprint.alt,
+				_sb_cam_footprint.lat,
+				_sb_cam_footprint.lon,
+				(double)_sb_cam_footprint.yaw);
 
-	fsync(log_fd);
-	n = write(log_fd, log_line_buffer, strlen(log_line_buffer));
+		fsync(log_fd);
+		n = write(log_fd, log_line_buffer, strlen(log_line_buffer));
 
-	if (n < 0) {
-		err(1, "error writing log file");
+		if (n < 0) {
+			err(1, "error writing log file");
+		}
 	}
 }
 
