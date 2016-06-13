@@ -450,7 +450,7 @@ bool set_nav_state(struct vehicle_status_s *status, const bool data_link_loss_en
 	case MAIN_STATE_ALTCTL:
 	case MAIN_STATE_POSCTL:
 		/* require RC for all manual modes */
-		if (status->rc_signal_lost && armed) {
+		if (status->rc_signal_lost && armed && !status->condition_landed) {
 			status->failsafe = true;
 
 			if (status->condition_global_position_valid && status->condition_home_position_valid) {
@@ -494,32 +494,38 @@ bool set_nav_state(struct vehicle_status_s *status, const bool data_link_loss_en
 		 * - if there is no datalink and the mission is finished */
 		if (((status->data_link_lost && data_link_loss_enabled) && status->rc_signal_lost) ||
 		    (!data_link_loss_enabled && status->rc_signal_lost && mission_finished)) {
-			status->failsafe = true;
 
-			if (status->condition_global_position_valid && status->condition_home_position_valid) {
-				status->nav_state = NAVIGATION_STATE_AUTO_RTL;
-			} else if (status->condition_local_position_valid) {
-				status->nav_state = NAVIGATION_STATE_LAND;
-			} else if (status->condition_local_altitude_valid) {
-				status->nav_state = NAVIGATION_STATE_DESCEND;
-			} else {
-				status->nav_state = NAVIGATION_STATE_TERMINATION;
+			if(!status->condition_landed)
+			{
+				status->failsafe = true;
+
+				if (status->condition_global_position_valid && status->condition_home_position_valid) {
+					status->nav_state = NAVIGATION_STATE_AUTO_RTL;
+				} else if (status->condition_local_position_valid) {
+					status->nav_state = NAVIGATION_STATE_LAND;
+				} else if (status->condition_local_altitude_valid) {
+					status->nav_state = NAVIGATION_STATE_DESCEND;
+				} else {
+					status->nav_state = NAVIGATION_STATE_TERMINATION;
+				}
 			}
-
 		/* also go into failsafe if just datalink is lost */
 		} else if (status->data_link_lost && data_link_loss_enabled) {
-			status->failsafe = true;
 
-			if (status->condition_global_position_valid && status->condition_home_position_valid) {
-				status->nav_state = NAVIGATION_STATE_AUTO_RTGS;
-			} else if (status->condition_local_position_valid) {
-				status->nav_state = NAVIGATION_STATE_LAND;
-			} else if (status->condition_local_altitude_valid) {
-				status->nav_state = NAVIGATION_STATE_DESCEND;
-			} else {
-				status->nav_state = NAVIGATION_STATE_TERMINATION;
+			if(!status->condition_landed)
+			{
+				status->failsafe = true;
+
+				if (status->condition_global_position_valid && status->condition_home_position_valid) {
+					status->nav_state = NAVIGATION_STATE_AUTO_RTGS;
+				} else if (status->condition_local_position_valid) {
+					status->nav_state = NAVIGATION_STATE_LAND;
+				} else if (status->condition_local_altitude_valid) {
+					status->nav_state = NAVIGATION_STATE_DESCEND;
+				} else {
+					status->nav_state = NAVIGATION_STATE_TERMINATION;
+				}
 			}
-
 		/* don't bother if RC is lost and mission is not yet finished */
 		} else if (status->rc_signal_lost) {
 
