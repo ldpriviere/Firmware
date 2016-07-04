@@ -170,7 +170,13 @@ static struct vehicle_status_s status;
 static struct actuator_armed_s armed;
 static struct safety_s safety;
 static struct vehicle_control_mode_s control_mode;
+
+static main_state_t main_state_before_rtl = MAIN_STATE_MAX;
+struct manual_control_setpoint_s sp_man = {};		///< the current manual control setpoint
+static manual_control_setpoint_s _last_sp_man = {};	///< the manual control setpoint valid at the last mode switch
 static struct offboard_control_setpoint_s sp_offboard;
+
+static bool rtl_on = false;
 
 /* tasks waiting for low prio thread */
 typedef enum {
@@ -220,7 +226,7 @@ void check_valid(hrt_abstime timestamp, hrt_abstime timeout, bool valid_in, bool
 
 void check_mode_switches(struct manual_control_setpoint_s *sp_man, struct vehicle_status_s *status);
 
-transition_result_t set_main_state_rc(struct vehicle_status_s *status, struct manual_control_setpoint_s *sp_man);
+transition_result_t set_main_state_rc(struct vehicle_status_s *status);
 
 void set_control_mode();
 
@@ -840,7 +846,6 @@ int commander_thread_main(int argc, char *argv[])
 
 	/* Subscribe to manual control data */
 	int sp_man_sub = orb_subscribe(ORB_ID(manual_control_setpoint));
-	struct manual_control_setpoint_s sp_man;
 	memset(&sp_man, 0, sizeof(sp_man));
 
 	/* Subscribe to offboard control data */
@@ -1352,6 +1357,12 @@ int commander_thread_main(int argc, char *argv[])
 
 		/* **************************** GEOFENCE ************************* */
 
+		if (!rtl_on) {
+			// store the last good main_state when not in an navigation
+			// hold state
+			main_state_before_rtl = status.main_state;
+		}
+
 		/* start geofence result check */
 		orb_check(geofence_result_sub, &updated);
 
@@ -1361,6 +1372,9 @@ int commander_thread_main(int argc, char *argv[])
 
 		// Geofence actions
 		if (armed.armed && (geofence_result.geofence_action != GF_ACTION_NONE)) {
+
+			static bool geofence_loiter_on = false;
+			static bool geofence_rtl_on = false;
 
 			/* Check for geofence violation. Trigger only in AUTO mode*/
 			if ( (geofence_result.geofence_violated) && (status.main_state == MAIN_STATE_AUTO_MISSION) ) {
@@ -1397,7 +1411,37 @@ int commander_thread_main(int argc, char *argv[])
 						}
 					}
 				}
+			}
 
+			// reset if no longer in LOITER or if manually switched to LOITER
+			geofence_loiter_on = geofence_loiter_on
+									&& (status.main_state == MAIN_STATE_AUTO_LOITER)
+									&& (sp_man.loiter_switch == SWITCH_POS_OFF);
+
+			// reset if no longer in RTL or if manually switched to RTL
+			geofence_rtl_on = geofence_rtl_on
+								&& (status.main_state == MAIN_STATE_AUTO_RTL)
+								&& (sp_man.return_switch == SWITCH_POS_OFF);
+
+			rtl_on = rtl_on || (geofence_loiter_on || geofence_rtl_on);
+		}
+
+		// revert geofence failsafe transition if sticks are moved and we were previously in MANUAL or ASSIST
+		if (rtl_on &&
+		   (main_state_before_rtl == MAIN_STATE_MANUAL ||
+			main_state_before_rtl == MAIN_STATE_ALTCTL ||
+			main_state_before_rtl == MAIN_STATE_POSCTL ||
+			main_state_before_rtl == MAIN_STATE_ACRO)) {
+
+			// transition to previous state if sticks are increased
+			const float min_stick_change = 0.2f;
+			if ((_last_sp_man.timestamp != sp_man.timestamp) &&
+				((fabsf(sp_man.x) - fabsf(_last_sp_man.x) > min_stick_change) ||
+				 (fabsf(sp_man.y) - fabsf(_last_sp_man.y) > min_stick_change) ||
+				 (fabsf(sp_man.z) - fabsf(_last_sp_man.z) > min_stick_change) ||
+				 (fabsf(sp_man.r) - fabsf(_last_sp_man.r) > min_stick_change))) {
+
+				main_state_transition(&status, main_state_before_rtl);
 			}
 		}
 
@@ -1492,7 +1536,7 @@ int commander_thread_main(int argc, char *argv[])
 			}
 
 			/* evaluate the main state machine according to mode switches */
-			transition_result_t main_res = set_main_state_rc(&status, &sp_man);
+			transition_result_t main_res = set_main_state_rc(&status);
 
 			/* play tune on mode change only if armed, blink LED always */
 			if (main_res == TRANSITION_CHANGED) {
@@ -1736,13 +1780,38 @@ control_status_leds(vehicle_status_s *status_local, const actuator_armed_s *actu
 }
 
 transition_result_t
-set_main_state_rc(struct vehicle_status_s *status_local, struct manual_control_setpoint_s *sp_man)
+set_main_state_rc(struct vehicle_status_s *status_local)
 {
 	/* set main state according to RC switches */
 	transition_result_t res = TRANSITION_DENIED;
 
+	/* manual setpoint has not updated, do not re-evaluate it */
+	if (((_last_sp_man.timestamp != 0) && (_last_sp_man.timestamp == sp_man.timestamp)) ||
+		((_last_sp_man.offboard_switch == sp_man.offboard_switch) &&
+		 (_last_sp_man.return_switch == sp_man.return_switch) &&
+		 (_last_sp_man.mode_switch == sp_man.mode_switch) &&
+		 (_last_sp_man.acro_switch == sp_man.acro_switch) &&
+		 (_last_sp_man.posctl_switch == sp_man.posctl_switch) &&
+		 (_last_sp_man.loiter_switch == sp_man.loiter_switch))) {
+
+		// update these fields for the geofence system
+
+		if (!rtl_on) {
+			_last_sp_man.timestamp = sp_man.timestamp;
+			_last_sp_man.x = sp_man.x;
+			_last_sp_man.y = sp_man.y;
+			_last_sp_man.z = sp_man.z;
+			_last_sp_man.r = sp_man.r;
+		}
+
+		/* no timestamp change or no switch change -> nothing changed */
+		return TRANSITION_NOT_CHANGED;
+	}
+
+	_last_sp_man = sp_man;
+
 	/* offboard switch overrides main switch */
-	if (sp_man->offboard_switch == SWITCH_POS_ON) {
+	if (sp_man.offboard_switch == SWITCH_POS_ON) {
 		res = main_state_transition(status_local, MAIN_STATE_OFFBOARD);
 		if (res == TRANSITION_DENIED) {
 			print_reject_mode(status_local, "OFFBOARD");
@@ -1753,13 +1822,13 @@ set_main_state_rc(struct vehicle_status_s *status_local, struct manual_control_s
 	}
 
 	/* offboard switched off or denied, check main mode switch */
-	switch (sp_man->mode_switch) {
+	switch (sp_man.mode_switch) {
 	case SWITCH_POS_NONE:
 		res = TRANSITION_NOT_CHANGED;
 		break;
 
 	case SWITCH_POS_OFF:		// MANUAL
-		if (sp_man->acro_switch == SWITCH_POS_ON) {
+		if (sp_man.acro_switch == SWITCH_POS_ON) {
 			res = main_state_transition(status_local, MAIN_STATE_ACRO);
 
 		} else {
@@ -1769,7 +1838,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, struct manual_control_s
 		break;
 
 	case SWITCH_POS_MIDDLE:		// ASSIST
-		if (sp_man->posctl_switch == SWITCH_POS_ON) {
+		if (sp_man.posctl_switch == SWITCH_POS_ON) {
 			res = main_state_transition(status_local, MAIN_STATE_POSCTL);
 
 			if (res != TRANSITION_DENIED) {
@@ -1786,7 +1855,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, struct manual_control_s
 			break;	// changed successfully or already in this mode
 		}
 
-		if (sp_man->posctl_switch != SWITCH_POS_ON) {
+		if (sp_man.posctl_switch != SWITCH_POS_ON) {
 			print_reject_mode(status_local, "ALTCTL");
 		}
 
@@ -1796,7 +1865,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, struct manual_control_s
 		break;
 
 	case SWITCH_POS_ON:			// AUTO
-		if (sp_man->return_switch == SWITCH_POS_ON) {
+		if (sp_man.return_switch == SWITCH_POS_ON) {
 			res = main_state_transition(status_local, MAIN_STATE_AUTO_RTL);
 
 			if (res != TRANSITION_DENIED) {
@@ -1812,7 +1881,7 @@ set_main_state_rc(struct vehicle_status_s *status_local, struct manual_control_s
                 break;  // changed successfully or already in this state
             }
 
-		} else if (sp_man->loiter_switch == SWITCH_POS_ON) {
+		} else if (sp_man.loiter_switch == SWITCH_POS_ON) {
 			res = main_state_transition(status_local, MAIN_STATE_AUTO_LOITER);
 
 			if (res != TRANSITION_DENIED) {
