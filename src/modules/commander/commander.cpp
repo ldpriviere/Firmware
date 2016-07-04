@@ -80,6 +80,7 @@
 #include <uORB/topics/system_power.h>
 #include <uORB/topics/mission.h>
 #include <uORB/topics/mission_result.h>
+#include <uORB/topics/geofence_result.h>
 #include <uORB/topics/telemetry_status.h>
 
 #include <drivers/drv_led.h>
@@ -651,6 +652,7 @@ int commander_thread_main(int argc, char *argv[])
 	param_t _param_takeoff_alt = param_find("NAV_TAKEOFF_ALT");
 	param_t _param_enable_parachute = param_find("NAV_PARACHUTE_EN");
 	param_t _param_enable_datalink_loss = param_find("COM_DL_LOSS_EN");
+	param_t _param_geofence_action = param_find("GF_ACTION");
 
 	/* welcome user */
 	warnx("starting");
@@ -831,6 +833,11 @@ int commander_thread_main(int argc, char *argv[])
 	struct mission_result_s mission_result;
 	memset(&mission_result, 0, sizeof(mission_result));
 
+	/* Subscribe to geofence result topic */
+	int geofence_result_sub = orb_subscribe(ORB_ID(geofence_result));
+	struct geofence_result_s geofence_result;
+	memset(&geofence_result, 0, sizeof(geofence_result));
+
 	/* Subscribe to manual control data */
 	int sp_man_sub = orb_subscribe(ORB_ID(manual_control_setpoint));
 	struct manual_control_setpoint_s sp_man;
@@ -932,6 +939,8 @@ int commander_thread_main(int argc, char *argv[])
 
 	int32_t datalink_loss_enabled = false;
 
+	int32_t geofence_action = 0;
+
 	/* check which state machines for changes, clear "changed" flag */
 	bool arming_state_changed = false;
 	bool main_state_changed = false;
@@ -991,6 +1000,7 @@ int commander_thread_main(int argc, char *argv[])
 			param_get(_param_takeoff_alt, &takeoff_alt);
 			param_get(_param_enable_parachute, &parachute_enabled);
 			param_get(_param_enable_datalink_loss, &datalink_loss_enabled);
+			param_get(_param_geofence_action, &geofence_action);
 		}
 
 		orb_check(sp_man_sub, &updated);
@@ -1339,6 +1349,59 @@ int commander_thread_main(int argc, char *argv[])
 		if (updated) {
 			orb_copy(ORB_ID(mission_result), mission_result_sub, &mission_result);
 		}
+
+		/* **************************** GEOFENCE ************************* */
+
+		/* start geofence result check */
+		orb_check(geofence_result_sub, &updated);
+
+		if (updated) {
+			orb_copy(ORB_ID(geofence_result), geofence_result_sub, &geofence_result);
+		}
+
+		// Geofence actions
+		if (armed.armed && (geofence_result.geofence_action != GF_ACTION_NONE)) {
+
+			/* Check for geofence violation. Trigger only in AUTO mode*/
+			if ( (geofence_result.geofence_violated) && (status.main_state == MAIN_STATE_AUTO_MISSION) ) {
+
+				static hrt_abstime last_geofence_violation = 0;
+				const hrt_abstime geofence_violation_action_interval = 10000000; // 10 seconds
+				if (hrt_elapsed_time(&last_geofence_violation) > geofence_violation_action_interval) {
+
+					last_geofence_violation = hrt_absolute_time();
+
+					switch (geofence_result.geofence_action) {
+						case (GF_ACTION_NONE) : {
+							// do nothing
+							break;
+						}
+						case (GF_ACTION_WARN) : {
+							// do nothing, mavlink critical messages are sent by navigator
+							break;
+						}
+						case (GF_ACTION_LOITER) : {
+							main_state_transition(&status, MAIN_STATE_AUTO_LOITER);
+							break;
+						}
+						case (GF_ACTION_RTL) : {
+							main_state_transition(&status, MAIN_STATE_AUTO_RTL);
+							break;
+						}
+						case (GF_ACTION_TERMINATE) : {
+							warnx("Flight termination because of geofence");
+							mavlink_log_critical(mavlink_fd, "Geofence violation: flight termination");
+							armed.force_failsafe = true;
+							status_changed = true;
+							break;
+						}
+					}
+				}
+
+			}
+		}
+
+		/* **************************** END GEOFENCE ************************* */
 
 		/* RC input check */
 		if (!status.rc_input_blocked && sp_man.timestamp != 0 && hrt_absolute_time() < sp_man.timestamp + RC_TIMEOUT) {

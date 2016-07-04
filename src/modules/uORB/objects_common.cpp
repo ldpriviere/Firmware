@@ -97,11 +97,18 @@ ORB_DEFINE(safety, struct safety_s);
 #include "topics/battery_status.h"
 ORB_DEFINE(battery_status, struct battery_status_s);
 
+/* ************************** SUNBIRDS ********************************/
+
 #include "topics/mppt_status.h"
 ORB_DEFINE(mppt_status, struct mppt_status_s);
 
 #include "topics/sb_cam_footprint.h"
 ORB_DEFINE(sb_cam_footprint, struct sb_cam_footprint_s);
+
+#include "topics/geofence_result.h"
+ORB_DEFINE(geofence_result, struct geofence_result_s);
+
+/* ************************** SUNBIRDS ********************************/
 
 #include "topics/servorail_status.h"
 ORB_DEFINE(servorail_status, struct servorail_status_s);

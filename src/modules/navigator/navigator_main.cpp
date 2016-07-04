@@ -68,6 +68,7 @@
 #include <uORB/topics/fence.h>
 #include <uORB/topics/navigation_capabilities.h>
 #include <uORB/topics/offboard_control_setpoint.h>
+#include <uORB/topics/geofence_result.h>
 
 #include <systemlib/err.h>
 #include <systemlib/systemlib.h>
@@ -85,6 +86,7 @@
  */
 extern "C" __EXPORT int navigator_main(int argc, char *argv[]);
 
+#define GEOFENCE_CHECK_INTERVAL 200000
 
 namespace navigator
 {
@@ -107,6 +109,7 @@ Navigator::Navigator() :
 	_offboard_mission_sub(-1),
 	_param_update_sub(-1),
 	_pos_sp_triplet_pub(-1),
+	_geofence_result_pub(-1),
 	_vstatus{},
 	_control_mode{},
 	_global_pos{},
@@ -221,6 +224,9 @@ Navigator::task_main()
 	warnx("Initializing..");
 
 	_mavlink_fd = open(MAVLINK_LOG_DEVICE, 0);
+	_geofence.setMavlinkFd(_mavlink_fd);
+
+	bool have_geofence_position_data = false;
 
 	/* Try to load the geofence:
 	 * if /fs/microsd/etc/geofence.txt load from this file
@@ -332,16 +338,35 @@ Navigator::task_main()
 		/* global position updated */
 		if (fds[0].revents & POLLIN) {
 			global_position_update();
+			if (_geofence.getSource() == Geofence::GF_SOURCE_GPS) {
+				have_geofence_position_data = true;
+			}
+		}
 
-			/* Check geofence violation */
-			if (!_geofence.inside(&_global_pos)) {
+		/* Check geofence violation */
+		static hrt_abstime last_geofence_check = 0;
+		if (have_geofence_position_data &&
+			(_geofence.getGeofenceAction() != GF_ACTION_NONE) &&
+			(hrt_elapsed_time(&last_geofence_check) > GEOFENCE_CHECK_INTERVAL)) {
+			bool inside = _geofence.inside(_global_pos.lat, _global_pos.lon, _global_pos.alt);
+			last_geofence_check = hrt_absolute_time();
+			have_geofence_position_data = false;
+
+			_geofence_result.geofence_action = _geofence.getGeofenceAction();
+			if (!inside) {
+				/* inform other apps via the mission result */
+				_geofence_result.geofence_violated = true;
+				publish_geofence_result();
 
 				/* Issue a warning about the geofence violation once */
 				if (!_geofence_violation_warning_sent) {
-					mavlink_log_critical(_mavlink_fd, "#audio: Geofence violation");
+					mavlink_log_critical(_mavlink_fd, "Geofence violation");
 					_geofence_violation_warning_sent = true;
 				}
 			} else {
+				/* inform other apps via the mission result */
+				_geofence_result.geofence_violated = false;
+				publish_geofence_result();
 				/* Reset the _geofence_violation_warning_sent field */
 				_geofence_violation_warning_sent = false;
 			}
@@ -466,6 +491,21 @@ Navigator::publish_position_setpoint_triplet()
 
 	} else {
 		_pos_sp_triplet_pub = orb_advertise(ORB_ID(position_setpoint_triplet), &_pos_sp_triplet);
+	}
+}
+
+void
+Navigator::publish_geofence_result()
+{
+
+	/* lazily publish the geofence result only once available */
+	if (_geofence_result_pub != -1) {
+		/* publish mission result */
+		orb_publish(ORB_ID(geofence_result), _geofence_result_pub, &_geofence_result);
+
+	} else {
+		/* advertise and publish */
+		_geofence_result_pub = orb_advertise(ORB_ID(geofence_result), &_geofence_result);
 	}
 }
 

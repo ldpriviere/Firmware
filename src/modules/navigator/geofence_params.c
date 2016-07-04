@@ -48,13 +48,71 @@
  */
 
 /**
- * Enable geofence.
+ * Geofence violation action.
  *
- * Set to 1 to enable geofence.
- * Defaults to 1 because geofence is only enabled when the geofence.txt file is present.
+ * 0 = none, 1 = warning (default), 2 = loiter, 3 = return to launch, 4 = fight termination
+ *
+ * @min 0
+ * @max 4
+ * @group Geofence
+ */
+PARAM_DEFINE_INT32(GF_ACTION, 1);
+
+/**
+ * Geofence altitude mode
+ *
+ * Select which altitude reference should be used
+ * 0 = WGS84, 1 = AMSL
  *
  * @min 0
  * @max 1
  * @group Geofence
  */
-PARAM_DEFINE_INT32(GF_ON, 1);
+PARAM_DEFINE_INT32(GF_ALTMODE, 0);
+
+/**
+ * Geofence source
+ *
+ * Select which position source should be used. Selecting GPS instead of global position makes sure that there is
+ * no dependence on the position estimator
+ * 0 = global position, 1 = GPS
+ *
+ * @min 0
+ * @max 1
+ * @group Geofence
+ */
+PARAM_DEFINE_INT32(GF_SOURCE, 0);
+
+/**
+ * Geofence counter limit
+ *
+ * Set how many subsequent position measurements outside of the fence are needed before geofence violation is triggered
+ *
+ * @min -1
+ * @max 10
+ * @group Geofence
+ */
+PARAM_DEFINE_INT32(GF_COUNT, -1);
+
+/**
+ * Max horizontal distance in meters.
+ *
+ * Set to > 0 to activate a geofence action if horizontal distance to home exceeds this value.
+ *
+ * @unit meters
+ * @min -1
+ * @group Geofence
+ */
+PARAM_DEFINE_INT32(GF_MAX_HOR_DIST, -1);
+
+/**
+ * Max vertical distance in meters.
+ *
+ * Set to > 0 to activate a geofence action if vertical distance to home exceeds this value.
+ *
+ * @unit meters
+ * @min -1
+ * @group Geofence
+ */
+PARAM_DEFINE_INT32(GF_MAX_VER_DIST, -1);
+
