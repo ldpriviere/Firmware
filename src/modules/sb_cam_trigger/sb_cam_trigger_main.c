@@ -185,9 +185,6 @@ int sb_cam_trigger_thread_main(int argc, char *argv[])
 
 	parameters_update();
 
-	stm32_configgpio(_gpios[trigger_pin-1]);
-	stm32_gpiowrite(_gpios[trigger_pin-1], !trigger_polarity);
-
 	_sb_cam_footprint_pub = orb_advertise(ORB_ID(sb_cam_footprint), &_sb_cam_footprint);
 
 	_params_sub = orb_subscribe(ORB_ID(parameter_update));
@@ -344,6 +341,9 @@ int sb_cam_trigger_main(int argc, char *argv[])
 			/* this is not an error */
 			exit(0);
 		}
+
+		stm32_configgpio(_gpios[trigger_pin-1]);
+		stm32_gpiowrite(_gpios[trigger_pin-1], !trigger_polarity);
 
 		thread_should_exit = false;
 		deamon_task = task_spawn_cmd("sb_cam_trigger",
