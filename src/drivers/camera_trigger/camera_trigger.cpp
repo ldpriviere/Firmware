@@ -48,11 +48,12 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <poll.h>
+#include <errno.h>
 #include <mathlib/mathlib.h>
 #include <nuttx/clock.h>
 #include <nuttx/arch.h>
 #include <nuttx/wqueue.h>
-#include <sys/stat.h>
 #include <systemlib/systemlib.h>
 #include <systemlib/err.h>
 #include <systemlib/param/param.h>
@@ -74,7 +75,7 @@
 #include "interfaces/src/relay.h"
 
 #define TRIGGER_PIN_DEFAULT 1
-static const unsigned MAX_NO_LOGFILE = 999;		/**< Maximum number of log files */
+
 
 extern "C" __EXPORT int camera_trigger_main(int argc, char *argv[]);
 
@@ -127,15 +128,6 @@ public:
 	 */
 	void		updateParameters();
 
-	/**
-	 * Open Log file
-	 */
-	int		open_log_file();
-
-	/**
-	 * File exist
-	 */
-	bool file_exist(const char *filename);
 
 private:
 
@@ -182,9 +174,6 @@ private:
 
 	/* GPS time, used for log files naming */
 	uint64_t gps_time = 0;
-
-	/*Log file descriptor*/
-	int log_fd = -1;
 
 	uint64_t last_engage_time = 0;
 
@@ -264,17 +253,6 @@ CameraTrigger::CameraTrigger(camera_interface_mode_t camera_interface_mode) :
 	this->updateParameters();
 
 	_sb_cam_footprint_pub = orb_advertise(ORB_ID(sb_cam_footprint), &_sb_cam_footprint);
-
-	_params_sub = orb_subscribe(ORB_ID(parameter_update));
-	_global_pos_sub = orb_subscribe(ORB_ID(vehicle_global_position));
-	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
-	_gps_pos_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
-
-	if (!orb_copy(ORB_ID(vehicle_gps_position), _gps_pos_sub, &_gps_pos)) {
-		gps_time = _gps_pos.time_gps_usec;
-	}
-
-	log_fd = open_log_file();
 }
 
 CameraTrigger::~CameraTrigger()
@@ -290,59 +268,6 @@ void CameraTrigger::updateParameters()
 	param_get(_p_interval, &_interval);
 	param_get(_p_distance, &_distance);
 	param_get(_p_mode, &_mode);
-}
-
-/**
- * @return 0 if file exists
- */
-bool CameraTrigger::file_exist(const char *filename)
-{
-	struct stat buffer;
-	return stat(filename, &buffer) == 0;
-}
-
-
-int CameraTrigger::open_log_file()
-{
-	/* string to hold the path to the log */
-	char log_file_name[32] = "";
-	char log_file_path[64] = "";
-
-	if (gps_time != 0) {
-		/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/CAM_19_37_52.txt */
-		time_t gps_time_sec = gps_time / 1000000;
-		struct tm t;
-		gmtime_r(&gps_time_sec, &t);
-		strftime(log_file_name, sizeof(log_file_name), "CAM_%H_%M_%S.txt", &t);
-		snprintf(log_file_path, sizeof(log_file_path), "%s/%s", "/fs/microsd/log", log_file_name);
-
-	} else {
-		uint16_t file_number = 1; // start with file log001
-
-		/* look for the next file that does not exist */
-		while (file_number <= MAX_NO_LOGFILE) {
-			/* format log file path: e.g. /fs/microsd/sess001/CAM_001.txt */
-			snprintf(log_file_name, sizeof(log_file_name), "CAM_%03u.txt", file_number);
-			snprintf(log_file_path, sizeof(log_file_path), "%s/%s", "/fs/microsd/log", log_file_name);
-
-			if (!file_exist(log_file_path)) {
-				break;
-			}
-
-			file_number++;
-		}
-	}
-
-	int fd = open(log_file_path, O_CREAT | O_WRONLY | O_DSYNC);
-
-	if (fd < 0) {
-		warn("failed opening log: %s", log_file_name);
-
-	} else {
-		warnx("log file: %s", log_file_name);
-	}
-
-	return fd;
 }
 
 void
@@ -394,6 +319,14 @@ CameraTrigger::start()
 		control(true);
 	}
 
+	last_engage_time = 0;
+	_global_pos.time_gps_usec = 0;
+	_global_pos.alt = 0.0;
+	_global_pos.lat = 0.0;
+	_global_pos.lon = 0.0;
+	_global_pos.yaw = 0.0;
+	_home_pos.alt = 0.0;
+
 	// start to monitor at high rate for trigger enable command
 	work_queue(LPWORK, &_work, (worker_t)&CameraTrigger::cycle_trampoline, this, USEC2TICK(1));
 
@@ -406,9 +339,6 @@ CameraTrigger::stop()
 	hrt_cancel(&_engagecall);
 	hrt_cancel(&_disengagecall);
 
-	fsync(log_fd);
-	close(log_fd);
-
 	if (camera_trigger::g_camera_trigger != nullptr) {
 		delete(camera_trigger::g_camera_trigger);
 	}
@@ -419,6 +349,26 @@ CameraTrigger::cycle_trampoline(void *arg)
 {
 
 	CameraTrigger *trig = reinterpret_cast<CameraTrigger *>(arg);
+
+	if (trig->_params_sub < 0) {
+		trig->_params_sub = orb_subscribe(ORB_ID(parameter_update));
+	}
+
+	if (trig->_global_pos_sub < 0) {
+		trig->_global_pos_sub = orb_subscribe(ORB_ID(vehicle_global_position));
+	}
+
+	if (trig->_home_pos_sub < 0) {
+		trig->_home_pos_sub = orb_subscribe(ORB_ID(home_position));
+	}
+
+	if (trig->_gps_pos_sub < 0) {
+		trig->_gps_pos_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
+	}
+
+	if (!orb_copy(ORB_ID(vehicle_gps_position), trig->_gps_pos_sub, &trig->_gps_pos)) {
+		trig->gps_time = trig->_gps_pos.time_gps_usec;
+	}
 
 	/* ================================== CHECK PARAMs ============================= */
 
@@ -439,6 +389,7 @@ CameraTrigger::cycle_trampoline(void *arg)
 	orb_check(trig->_global_pos_sub, &global_position_updated);
 	if (global_position_updated) {
 		orb_copy(ORB_ID(vehicle_global_position), trig->_global_pos_sub, &(trig->_global_pos));
+		//warnx("GLOBAL POS %f", (double)trig->_global_pos.alt);
 	}
 
 	/* home position updated */
@@ -454,7 +405,9 @@ CameraTrigger::cycle_trampoline(void *arg)
 	if (gps_position_updated) {
 		orb_copy(ORB_ID(vehicle_gps_position), trig->_gps_pos_sub, &(trig->_gps_pos));
 		trig->gps_time = trig->_gps_pos.time_gps_usec;
+		//warnx("GPS POS %d", trig->_gps_pos.alt);
 	}
+
 
 	/* ================================== CHECK PARAMs ============================= */
 
@@ -523,37 +476,19 @@ void
 CameraTrigger::engage(void *arg)
 {
 	CameraTrigger *trig = reinterpret_cast<CameraTrigger *>(arg);
-//	int n;
-//	char log_line_buffer[100];
 
 	trig->last_engage_time = hrt_absolute_time();
 
 	trig->_camera_interface->trigger(true);
 
-	trig->_sb_cam_footprint.timestamp = trig->last_engage_time;
-	trig->_sb_cam_footprint.alt = trig->_global_pos.alt - trig->_home_pos.alt;
+	trig->_sb_cam_footprint.timestamp = trig->_global_pos.time_gps_usec;
+	trig->_sb_cam_footprint.alt = trig->_global_pos.alt;
 	trig->_sb_cam_footprint.lat = trig->_global_pos.lat;
 	trig->_sb_cam_footprint.lon = trig->_global_pos.lon;
 	trig->_sb_cam_footprint.yaw = trig->_global_pos.yaw;
 
-	orb_publish(ORB_ID(sb_cam_footprint), trig->_sb_cam_footprint_pub, &(trig->_sb_cam_footprint));
 
-//	if(trig->log_fd >= 0)
-//	{
-//		snprintf(log_line_buffer, sizeof(log_line_buffer), "%d;%f;%f;%f;%f\n",
-//				trig->last_engage_time,
-//				(double)trig->_sb_cam_footprint.alt,
-//				trig->_sb_cam_footprint.lat,
-//				trig->_sb_cam_footprint.lon,
-//				(double)trig->_sb_cam_footprint.yaw);
-//
-//		fsync(trig->log_fd);
-//		n = write(trig->log_fd, log_line_buffer, strlen(log_line_buffer));
-//
-//		if (n < 0) {
-//			err(1, "error writing log file");
-//		}
-//	}
+	orb_publish(ORB_ID(sb_cam_footprint), trig->_sb_cam_footprint_pub, &(trig->_sb_cam_footprint));
 }
 
 void

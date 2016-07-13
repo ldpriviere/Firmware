@@ -112,6 +112,7 @@ MODULES		+= modules/sdlog2
 MODULES		+= modules/mppt
 MODULES		+= modules/sb_sensors
 MODULES		+= modules/sb_cam_trigger
+MODULES		+= modules/sdlogcam
 
 #
 # Library modules

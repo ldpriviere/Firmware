@@ -45,8 +45,11 @@ CameraInterfaceRelay::~CameraInterfaceRelay()
 void CameraInterfaceRelay::setup()
 {
 	for (unsigned i = 0; i < sizeof(_pins) / sizeof(_pins[0]); i++) {
-		stm32_configgpio(_gpios[_pins[i]]);
-		stm32_gpiowrite(_gpios[_pins[i]], !_polarity);
+		if(_pins[i] >= 0)
+		{
+			stm32_configgpio(_gpios[_pins[i]]);
+			stm32_gpiowrite(_gpios[_pins[i]], !_polarity);
+		}
 	}
 }
 

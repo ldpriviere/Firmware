@@ -473,6 +473,16 @@ then
 	fi
 
 	#
+	# Start CAM trigger control
+	#
+	echo "[CAM] start camera_trigger relay"
+	camera_trigger start --relay
+	
+	echo "[CAM] start sdlogcam"
+	sdlogcam start
+
+
+	#
 	# Fixed wing setup
 	#
 	if [ $VEHICLE_TYPE == fw ]
