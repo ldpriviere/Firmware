@@ -333,15 +333,17 @@ Navigator::task_main()
 		/* home position updated */
 		if (fds[1].revents & POLLIN) {
 			home_position_update();
+			_geofence.setHomePosStatus(true);
+			_geofence.setHomePosition(&_home_pos);
 		}
 
 		/* global position updated */
 		if (fds[0].revents & POLLIN) {
 			global_position_update();
-			if (_geofence.getSource() == Geofence::GF_SOURCE_GPS) {
-				have_geofence_position_data = true;
-			}
+			have_geofence_position_data = true;
 		}
+
+		_geofence.updateParams();
 
 		/* Check geofence violation */
 		static hrt_abstime last_geofence_check = 0;

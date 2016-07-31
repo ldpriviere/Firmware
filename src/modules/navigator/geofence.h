@@ -109,10 +109,15 @@ public:
 
 	void setMavlinkFd(int value) { _mavlinkFd = value; }
 
+	void setHomePosStatus(bool value) { _home_pos_set = value; }
+
+	void setHomePosition(home_position_s *homePos);
+
 private:
 	orb_advert_t	_fence_pub;			/**< publish fence topic */
 
 	home_position_s _home_pos;
+
 	bool _home_pos_set;
 
 	hrt_abstime _last_horizontal_range_warning;

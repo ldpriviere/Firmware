@@ -104,7 +104,6 @@ bool Geofence::inside(const struct vehicle_global_position_s &global_position,
 		      const struct vehicle_gps_position_s &gps_position, float baro_altitude_amsl,
 		      const struct home_position_s home_pos, bool home_position_set)
 {
-	updateParams();
 
 	_home_pos = home_pos;
 	_home_pos_set = home_position_set;
@@ -131,6 +130,7 @@ bool Geofence::inside(const struct vehicle_global_position_s &global_position,
 
 bool Geofence::inside(double lat, double lon, float altitude)
 {
+
 		int32_t max_horizontal_distance = _param_max_hor_distance.get();
 		int32_t max_vertical_distance = _param_max_ver_distance.get();
 
@@ -182,6 +182,18 @@ bool Geofence::inside(double lat, double lon, float altitude)
 	}
 }
 
+void Geofence::setHomePosition(home_position_s *homePos)
+{
+	_home_pos.timestamp = homePos->timestamp;
+
+	_home_pos.alt = homePos->alt;
+	_home_pos.lat = homePos->lat;
+	_home_pos.lon = homePos->lon;
+
+	_home_pos.x = homePos->x;
+	_home_pos.y = homePos->y;
+	_home_pos.z = homePos->z;
+}
 
 bool Geofence::inside_polygon(double lat, double lon, float altitude)
 {
