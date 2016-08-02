@@ -598,17 +598,24 @@ protected:
 	void send(const hrt_abstime t)
 	{
 		struct sb_cam_footprint_s footprint;
+		static uint64_t footprintLastTimestamp = 0;
 
 		if (_sb_cam_footprint_sub->update(&footprint)) {
-			mavlink_sb_cam_footprint_t msg;
 
-			msg.timestamp = footprint.timestamp;
-			msg.alt = (double)footprint.alt*1E3;
-			msg.lat = (double)footprint.lat*1E7;
-			msg.lon = (double)footprint.lon*1E7;
-			msg.yaw = (double)footprint.yaw*1E3;
+			if(footprintLastTimestamp != footprint.timestamp)
+			{
+				mavlink_sb_cam_footprint_t msg;
 
-			_mavlink->send_message(MAVLINK_MSG_ID_SB_CAM_FOOTPRINT, &msg);
+				msg.timestamp = footprint.timestamp;
+				msg.alt = (double)footprint.alt*1E3;
+				msg.lat = (double)footprint.lat*1E7;
+				msg.lon = (double)footprint.lon*1E7;
+				msg.yaw = (double)footprint.yaw*1E3;
+
+				footprintLastTimestamp = footprint.timestamp;
+
+				_mavlink->send_message(MAVLINK_MSG_ID_SB_CAM_FOOTPRINT, &msg);
+			}
 		}
 	}
 };
