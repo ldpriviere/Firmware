@@ -369,3 +369,16 @@ PARAM_DEFINE_FLOAT(FW_MAN_R_MAX, 45.0f);
  * @group FW Attitude Control
  */
 PARAM_DEFINE_FLOAT(FW_MAN_P_MAX, 45.0f);
+
+
+/**
+ * Airspeed scaler factor
+ *
+ * Use this coefficient to adjust the actuator scaling.
+ *
+ * @unit none
+ * @min 0.0
+ * @max 10
+ * @group FW Attitude Control
+ */
+PARAM_DEFINE_FLOAT(FW_AIRSPD_SCL, 2.0f);

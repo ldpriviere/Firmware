@@ -174,6 +174,7 @@ private:
 		float airspeed_min;
 		float airspeed_trim;
 		float airspeed_max;
+		float airspeed_scal_coef;
 
 		float trim_roll;
 		float trim_pitch;
@@ -184,6 +185,8 @@ private:
 		float pitchsp_offset_rad;			/**< Pitch Setpoint Offset in rad */
 		float man_roll_max;						/**< Max Roll in rad */
 		float man_pitch_max;					/**< Max Pitch in rad */
+
+
 
 	}		_parameters;			/**< local copies of interesting parameters */
 
@@ -216,6 +219,7 @@ private:
 		param_t airspeed_min;
 		param_t airspeed_trim;
 		param_t airspeed_max;
+		param_t airspeed_scal_coef;
 
 		param_t trim_roll;
 		param_t trim_pitch;
@@ -362,6 +366,7 @@ FixedwingAttitudeControl::FixedwingAttitudeControl() :
 	_parameter_handles.airspeed_min = param_find("FW_AIRSPD_MIN");
 	_parameter_handles.airspeed_trim = param_find("FW_AIRSPD_TRIM");
 	_parameter_handles.airspeed_max = param_find("FW_AIRSPD_MAX");
+	_parameter_handles.airspeed_scal_coef = param_find("FW_AIRSPD_SCL");
 
 	_parameter_handles.y_coordinated_min_speed = param_find("FW_YCO_VMIN");
 
@@ -437,6 +442,7 @@ FixedwingAttitudeControl::parameters_update()
 	param_get(_parameter_handles.airspeed_min, &(_parameters.airspeed_min));
 	param_get(_parameter_handles.airspeed_trim, &(_parameters.airspeed_trim));
 	param_get(_parameter_handles.airspeed_max, &(_parameters.airspeed_max));
+	param_get(_parameter_handles.airspeed_scal_coef, &(_parameters.airspeed_scal_coef));
 
 	param_get(_parameter_handles.trim_roll, &(_parameters.trim_roll));
 	param_get(_parameter_handles.trim_pitch, &(_parameters.trim_pitch));
@@ -711,7 +717,7 @@ FixedwingAttitudeControl::task_main()
 				 * Forcing the scaling to this value allows reasonable handheld tests.
 				 */
 
-				float airspeed_scaling = _parameters.airspeed_trim / ((airspeed < _parameters.airspeed_min) ? _parameters.airspeed_min : airspeed);
+				float airspeed_scaling = (_parameters.airspeed_trim * _parameters.airspeed_scal_coef) / ((airspeed < _parameters.airspeed_min) ? _parameters.airspeed_min : airspeed);
 
 				float roll_sp = _parameters.rollsp_offset_rad;
 				float pitch_sp = _parameters.pitchsp_offset_rad;
